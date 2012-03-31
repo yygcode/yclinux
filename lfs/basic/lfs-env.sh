@@ -1,4 +1,4 @@
-#! /bin/bash
+# /bin/bash -x
 
 dir=$(dirname $0)
 cmd=$(basename $0)
@@ -10,17 +10,13 @@ usage()
 {
 	echo -e "Usage: $cmd [OPTION]...\n"
 	echo -e "import and/or config lfs env."
-	echo -e "\t-r, --root		set root of the lfs root-filesystem"
+	echo -e "\t-r, --root		set root of the lfs directory"
 	echo -e "\t-s, --source		package source directory of lfs"
-	echo -e "\t-t, --tools		compile tools directory of lfs"
+	echo -e "\t-w, --work		compile directory of lfs"
 	echo -e "\t-a, --arch		architecture of lfs"
 	echo -e "\t-c, --cpu-core		cpu-core count"
-	echo -e "\t-i, --img		lfs image file"
-	echo -e "\t-s, --size		create sizeMB img if img isn't exists."
+	echo -e "\t-i, --img		lfs image file absolute pathname"
 	echo -e "\t-m, --mount		mount point"
-	echo -e "\t    --mkfs		create image file system"
-	echo -e "\t-u, --user		owner user of the mount"
-	echo -e "\t-g, --group		owner group of the mount"
 	echo -e "\t-h, --help		print usage"
 	echo -e ""
 
@@ -57,26 +53,19 @@ yes_no()
 
 export env_root=
 export env_source=
-export env_tools=
+export env_work=
 export env_arch=
 export env_cpu_core=
-export env_img=
-export env_size=
 export env_mount=
-export env_user=1000
-export env_group=1000
-export env_mkfs=no
 
 [ -e "$config" ] && . "$config" 2>/dev/null
 
 env_help=no
 eval $(yc_getopt --prefix='env' \
-	"root,r,:" "source,s,:" "tools,t,:" \
-	"arch,a,:" "cpu-core,c,:" "img,i,:" "size,s,:" \
+	"root,r,:" "source,s,:" "work,w,:" \
+	"arch,a,:" "cpu-core,c,:" "img,i,:"\
 	"user,u,:" "group,g,:" \
-	"mount,m,:" "mkfs,::" "help,h" -- "$@")
-
-
+	"mount,m,:" "help,h" -- "$@")
 [ "$env_help" != "no" ] && usage 0
 
 # root dir
@@ -118,11 +107,6 @@ if [ -n "${env_img##/*}" ]; then
 	env_img=$env_root/$env_img
 fi
 
-# image size
-if [ -n "${env_size##*[!0-9]*}" ]; then
-	echo_exit "image size must be an integer."
-fi
-
 # env_mount
 [ -n "$env_mount" ] || env_mount=mount-$env_arch
 if [ -n "${env_mount##/*}" ]; then
@@ -130,70 +114,21 @@ if [ -n "${env_mount##/*}" ]; then
 fi
 env_mount=${env_mount%/}
 
-# tools dir
-[ -n "$env_tools" ] || env_tools=tools
-if [ -n "${env_tools##/*}" ]; then
-	env_tools=$env_mount/$env_tools
-fi
-env_tools=${env_tools%/}
-
-
-[ -z "$env_mkfs" ] && env_mkfs=yes
-
 echo -e "  Env:"
 echo -e "\troot:      $env_root"
 echo -e "\tsource:    $env_source"
-echo -e "\ttools:     $env_tools"
+echo -e "\twork:      $env_work"
 echo -e "\tarch:      $env_arch"
 echo -e "\tcpu-core:  $env_cpu_core"
 echo -e "\timg:       $env_img"
-echo -e "\tsize:      $env_size"
 echo -e "\tmount:     $env_mount"
-echo -e "\tmkfs:      $env_mkfs"
 yes_no "\n\t[Please specify correct env and answer Y[es]]\n"
-
-# create ..
-[ -e "$env_root" ] || mkdir -p "$env_root"
-[ -e "$env_root" ] || echo_exit "create directory root($env_root) failed."
-[ -e "$env_source" ] || mkdir -p "$env_source"
-[ -e "$env_source" ] || echo_exit "create directory source($env_source) failed."
-[ -e "$env_tools" ] || mkdir -p "$env_tools"
-[ -e "$env_tools" ] || echo_exit "create directory tools($env_tools) failed."
-[ -e "$env_mount" ] || mkdir -p "$env_mount"
-[ -e "$env_mount" ] || echo_exit "create directory mount($env_mount) failed."
-[ -e "$(dirname $env_img)" ] || mkdir -p "$(dirname $env_img)"
-[ -e "$(dirname $env_img)" ] || \
-	echo_exit "create directory img-dir($(dirname $env_img)) failed."
-
-# img
-if [ -e "$env_img" ]; then
-	if [ -n "$env_size" ]; then
-		echo_exit "img $env_img exists, "\
-			"you cannot specify size($env_size) option"
-	fi
-fi
-
-if [ -n "$size" ]; then
-	echo "create image($env_img) with size $env_size"
-	dd if=/dev/zero of=$env_img count=$env_size bs=1M || \
-		echo_exit "create img($env_img) with size($env_size) failed"
-
-	echo "mkfs.ext3 img($env_img) ..."
-	mkfs.ext3 -F -m0 $env_img || echo_exit "mkfs.ext3 img($env_img)failed"
-fi
-
-if [ "$env_mkfs" = "yes" ]; then
-	echo -e "\nDo you really need format img($env_img)," \
-		"it will lost all data in img."
-	yes_no
-	mkfs.ext3 -F -m0 $env_img || echo_exit "mkfs.ext3 img($env_img)failed"
-fi
 
 {
 	# lfs config
 	echo "env_root='$env_root'"
 	echo "env_source='$env_source'"
-	echo "env_tools='$env_tools'"
+	echo "env_work='$env_work'"
 	echo "env_arch='$env_arch'"
 	echo "env_tgt='$env_arch-yc-linux-gnu'"
 	echo "env_cpu_core='$env_cpu_core'"
@@ -206,13 +141,63 @@ fi
 	echo 'LC_ALL=POSIX'
 } > $config || echo_exit "generate config($config) failed"
 
+[ -e "$env_mount" ] || mkdir -p "$env_mount"
+[ -e "$env_mount" ] || echo_exit "create directory mount($env_mount) failed."
 if ! mountpoint -q $env_mount; then
 	echo "mount img($env_img) to point($env_mount) ..."
 	sudo mount -o loop $env_img $env_mount || \
 		echo_exit "mount $env_img $env_mount failed"
-
-	sudo chown $env_user:$env_group $env_mount || \
-		echo_exit "chown $env_user:$env_group failed"
-
-	sudo ln -svf $env_tools /tools
 fi
+
+# mount source and this directory first
+lfs_root=$env_mount/home/lfs
+lfs_basic=$env_mount/.lfs-basic
+lfs_source=$env_mount/.lfs-sources
+sudo mkdir -p $lfs_root $lfs_basic $lfs_source || \
+	echo_exit "create dir failed: $env_root $lfs_basic $lfs_source"
+mountpoint -q $lfs_basic || \
+sudo mount --bind $dir $lfs_basic || \
+	echo_exit "bind mount current dir failed"
+mountpoint -q $lfs_source || \
+sudo mount --bind $env_source $lfs_source || \
+	echo_exit "bind mount $env_source dir failed"
+
+sudo cp $dir/lfs-init.sh $dir/getopt.sh $lfs_root
+lfs_mount=$env_mount
+[ -d $lfs_mount/dev ]  || mkdir -m 0755 $lfs_mount/dev
+[ -d $lfs_mount/root ] || mkdir -m 0700 $lfs_mount/root
+[ -d $lfs_mount/sys ]  || mkdir $lfs_mount/sys
+[ -d $lfs_mount/proc ] || mkdir $lfs_mount/proc
+[ -d $lfs_mount/tmp ]  || mkdir $lfs_mount/tmp
+
+sudo mount -t sysfs -o nodev,noexec,nosuid sysfs $lfs_mount/sys
+sudo mount -t proc -o nodev,noexec,nosuid proc $lfs_mount/proc
+sudo mount -t devtmpfs -o mode=0755 devtmpfs $lfs_mount/dev
+sudo mount -t devpts -o mode=0755 devpts $lfs_mount/dev/pts
+sudo mount -t tmpfs -o mode=0755 tmpfs-shm $lfs_mount/dev/shm
+
+(
+lfs_root=/home/lfs
+sudo chroot $env_mount /tools/bin/env -i \
+	HOME=$lfs_root TERM="$TERM" \
+	PS1='\u@\h:\w\$ ' \
+	lfs_root=$lfs_root \
+	lfs_basic=$lfs_root/basic \
+	lfs_source=$lfs_root/sources \
+	lfs_arch=$env_arch \
+	lfs_cpu_core=$env_cpu_core \
+	lfs_tgt=$env_arch-yc-linux-gnu \
+	PATH=/bin:/usr/bin:/sbin:/usr/sbin:/tools/bin \
+	/$lfs_root/lfs-init.sh
+)
+
+echo lfs_source=$lfs_source, lfs_mount=$lfs_mount
+sudo umount $lfs_source
+sudo umount $lfs_basic
+sudo umount $lfs_mount/dev/pts
+sudo umount $lfs_mount/dev/shm
+sudo umount $lfs_mount/dev
+sudo umount $lfs_mount/proc
+sudo umount $lfs_mount/sys
+
+exit 0

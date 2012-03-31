@@ -68,7 +68,7 @@ fi
 # packs
 gcc_source=$compile_source
 gcc_build=$compile_build
-packs="gmp-5.0.2.tar.bz2 mpfr-3.1.0.tar.bz2 mpc-0.9.tar.gz"
+packs="gmp-5.0.4.tar.xz mpc-0.9.tar.gz mpfr-3.1.0.tar.bz2"
 for pack in $packs; do
 	name=${pack%%-*}
 	if [ ! -e "$gcc_source/$name" ]; then
