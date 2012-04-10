@@ -1,0 +1,9 @@
+root:x:0:
+daemon:x:1:
+bin:x:2:
+sys:x:3:
+tty:x:4:
+mail:x:5:
+news:x:6:
+nogroup:x:65534:
+yanyg:x:1000:

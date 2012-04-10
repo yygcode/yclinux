@@ -1,0 +1,2 @@
+apt-get install xfonts-intl-chinese-big ttf-arphic-bkai00mp \
+	ttf-arphic-ukai ttf-arphic-uming ttf-arphic-bsmi00lp

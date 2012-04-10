@@ -1,0 +1,6 @@
+localedef -i <LANG> -f <KEY-MAP> <LANG>.<KEY-MAP>
+
+localedef -i en_US -f UTF-8 en_US.UTF-8
+localedef -i zh_CN -f UTF-8 zh_CN.UTF-8
+localedef -i zh_CN -f GB18030 zh_CN.GB18030
+localedef -i zh_CN -f GBK zh_CN.GBK

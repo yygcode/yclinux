@@ -1,0 +1,352 @@
+#!/bin/bash -x
+# * -- shell functions -- *
+#
+# Description	: run-level control functions
+#
+# Reference	: lfs-bootscripts
+#
+# Author	: yanyg	yygcode@gmail.com
+# Version	: 1.0
+# Copyright	: GLPv2
+# Date		: Mon Mar 26 14:34:39 CST 2012
+#
+
+. /lib/services/getopt.sh
+
+# NAME
+#	start_daemon - start system daemon programs
+#
+# SYNOPSIS
+#	start_daemon [OPTION]... [--] DAEMON [ARG]...
+#
+# DESCRIPTION
+#	OPTIONs:
+#		-f, --force		force running
+#		-n, --nice		daemon nice
+#		-p, --pidfile		daemon pid file pathname
+#	If OPTIONs conflict with ARGs of DAEMON, then you should append
+#	'--' just after all OPTIONs.
+#
+# RETURN VALUE
+#	On success, zero is returned. Otherwise, non-zero is returned
+#	0 - success
+#	1 - daemon cannot execute
+#	other - from pidofproc
+start_daemon()
+{
+	local force nice=0 pidfile pidlist="" ret="" prog=""
+
+	eval $(yc_getopt -o -ctrue -vyes -xprog \
+		force,f nice,n,: pidfile,p,: -- "$@")
+
+	if [ -z "$force" ]; then
+		pidlist=$(pidofproc "$@")
+		ret=$?
+		case "$ret" in
+		0)
+		# program is already running
+		return 0
+		;;
+		1)
+		# program dead but pidfile exists
+		rm -f "$pidfile"
+		;;
+		2)
+		# program is not running and pidfile doesn't exists
+		:
+		;;
+		*)
+		# some error take place
+		return $ret
+		;;
+		esac
+	fi
+
+	# shift to prog
+	while [ -n "$1" ] && [ "$1" != "$prog" ]; do shift; done
+
+	# It's argly, but ... need repare ..
+	# get pid
+	pid_start=$(echo $BASHPID)
+	nice -n "$nice" "$@"
+	ret=$?
+
+	# query pid of this daemon
+	if [ $ret -eq 0 ]; then
+		pids=$(pidofproc $prog)
+		ret=$?
+		[ -n "$pids" ] || return $ret
+		pid_max=$(cat /proc/sys/kernel/pid_max 2>/dev/null)
+		[ -n "$pid_max" ] || pid_max=32768
+		i=1
+		while [ "$i" -lt "10" ]; do
+			i=$((i+1))
+			pid=$(((pid_start+i)%pid_max))
+			[ -n "$(echo $pids | grep "\<$pid\>")" ] && break
+			pid=
+		done
+		[ -z "$pid" ] && ret=1
+		[ $ret -eq 0 ] && [ -n "$pidfile" ] && echo $pid > $pidfile
+	fi
+
+	return $ret
+}
+
+# NAME
+#	stop_daemon - stop system daemon programs
+#
+# SYNOPSIS
+#	stop_daemon [OPTION]... [--] DAEMON
+#
+# DESCRIPTION
+#	OPTIONs:
+#		-p, --pidfile		daemon pid file pathname
+#		-t, --timeout		timeout
+#
+# RETURN VALUE
+#	The same as killproc()
+stop_daemon()
+{
+	killproc "$@" "-TERM" "-KILL"
+}
+
+# NAME
+#	killproc - Send signal to running processes to stop it
+#
+# SYNOPSIS
+#	killproc [OPTION]... [--] PROGRAM [SIGNAL]
+#
+# DESCRIPTION
+#	OPTIONs:
+#		-p, --pidfile		program pid file pathname
+#		-t, --timeout		timeout
+#
+# RETURN VALUE
+#	0 - program is running, print PIDs to stdout
+#	1 - stop failed
+#	2 - program is dead, pidfile exists, or program is not running
+#	other - like as pidofproc()
+killproc()
+{
+	local pidfile pid pidlist ret timeout=3
+
+	eval $(yc_getopt -ctrue -o -xprog pidfile,p,: timeout,t,: -- "$@")
+
+	pidlist=$(pidofproc "$@")
+	ret=$?
+
+	# shift to prog
+	while [ -n "$1" ] && [ "$1" != "$prog" ]; do shift; done
+
+	case $ret in
+	0)
+	# program running, wait for send SIGNAL
+	:
+	;;
+	1)
+	# program is not running. pidfile exists.
+	rm -f "$pidfile"
+	return 2
+	;;
+	*)
+	return $ret
+	esac
+
+	local signal="-TERM" fallback="-KILL"
+
+	# signal set ?
+	[ -n "${2#SIG}" ] && { signal=${2#SIG}; fallback=""; }
+	[ -n "${3#SIG}" ] && fallback=${3#SIG}
+	[ -n "${signal##-*}" ] && signal="-$signal"
+	[ -n "${fallback##-*}" ] && fallback="-$fallback"
+
+	for pid in $pidlist; do
+		kill -0 $pid || continue
+		kill "$signal" $pid 2>/dev/null
+
+		local repeat=$((timeout * 10))
+		while [ $repeat -ne 0 ]; do
+			sleep 0.1
+			kill -0 $pid 2>/dev/null || break
+			: $((--repeat))
+		done
+
+		if [ $repeat -eq 0 ]; then
+			[ -n "$fallback" ] && kill "$fallback" $pid 2>/dev/null
+			sleep 1
+			kill -0 $pid 2>/dev/null && return 1
+		fi
+	done
+
+	[ -z "$pidfile" ] && pidfile=${prog##*/}.pid
+	[ -e "$pidfile" ] && rm -f "$pidfile"
+
+	return 0
+}
+
+# NAME
+#	statusofproc - status of program
+#
+# SYNOPSIS
+#	statusofproc [OPTION]... [--] PROGRAM
+#
+# DESCRIPTION
+#	OPTIONs:
+#		-p, --pidfile		program pid file pathname
+#
+# RETURN VALUE
+#	0 - program is running
+#	1 - program is dead, pidfile exists
+#	2 - program is not running
+#	3 - arguments error
+statusofproc()
+{
+	local pidfile pidlist pid prog
+
+	eval $(yc_getopt -o -ctrue -xprog pidfile,p,: -- "$@")
+
+	pidlist=$(pidofproc "$@")
+
+	local progbase=${prog##*/}
+	[ -z "$pidfile" ] && pidfile=$progbase.pid
+	echo -e -n " ${INFO}$progbase${NORMAL} "
+	if [ -n "$pidlist" ]; then
+		echo -e "is running with process" \
+			"ID(s) ${INFO}$pidlist.${NORMAL}"
+		return 0
+	else
+		if [ -n "$progbase" ] && [ -e "$pidfile" ]; then
+			echo -e "is not running but"\
+				"'${INFO}$pidfile${NORMAL}' exists."
+		else
+			echo -e "is not running."
+		fi
+		return 1
+	fi
+}
+
+# NAME
+#	pidofproc - find the process ID of the program
+#
+# SYNOPSIS
+#	pidofproc [OPTION]... [--] PROGRAM
+#
+# DESCRIPTION
+#	OPTIONs:
+#		-p, --pidfile		program pid file pathname
+#
+# RETURN VALUE
+#	0 - program is running, print PIDs to stdout
+#	1 - program is dead, pidfile exists
+#	2 - program is not running
+#	3 - arguments error
+pidofproc()
+{
+	local pidfile="" prog="" lpids="" es=0
+
+	eval $(yc_getopt -o -ctrue -xprog pidfile,p,: -- "$@")
+
+	if [ -z "$pidfile" ]; then
+		local progbase=${prog##*/}
+		[ -e "$progbase.pid" ] && pidfile=$progbase.pid
+	fi
+
+	if [ -n "$pidfile" ]; then
+		[ -e "$pidfile" ] || return 2
+		pidlist=$(head -n1 "$pidfile")
+	else
+		pidlist=$(pidof "$prog")
+	fi
+
+	for pid in $pidlist; do
+		kill -0 $pid 2>/dev/null
+		if [ $? -eq 0 ]; then
+			lpids="$lpids $pid"
+		else
+			es=1
+		fi
+	done
+
+	if [ -z "$lpids" ] && [ ! -f "$pidfile" ]; then
+		return 2
+	fi
+
+	echo $lpids
+	return $es
+}
+
+log_daemon_msg()
+{
+	log_begin_msg "$1${2+: ${INFO}${@:2}${NORMAL}}"
+}
+
+log_action_msg()
+{
+	log_begin_msg "$1${2+: ${INFO}${@:2}${NORMAL}}"
+	echo -e "${SET_COL}${BRACKET}[${color} INFO ${BRACKET}]${NORMAL}"
+}
+
+log_success_msg()
+{
+	log_end_msg 0 "$@"
+}
+
+log_warning_msg()
+{
+	log_end_msg 255 "$@"
+}
+
+log_failure_msg()
+{
+	log_end_msg 1 "$@"
+}
+
+log_begin_msg()
+{
+	echo -n -e "$@"
+}
+
+# log_end_msg OK|WARN|FAIL|0|255|* [...]
+log_end_msg()
+{
+	local status="${1:-OK}" es=1
+	local color=""
+
+	[ "$1" = "$status" ] && shift
+
+	case "$status" in
+	"0"|"OK"|"SUCC"|"ok"|"succ")
+		color="$SUCCESS"
+		status=SUCC
+		es=0
+		;;
+	"255"|"WARN"|"warn")
+		color="$WARNING"
+		status=WARN
+		es=255
+		;;
+	*)
+		color="$FAILURE"
+		status=FAIL
+		;;
+	esac
+
+	echo -e "$@${SET_COL}${BRACKET}[${color} $status ${BRACKET}]${NORMAL}"
+
+	return $es
+}
+
+COLUMNS=$(tput cols)
+[ -n "$COLUMNS" ] || COLUMNS=80
+COL=$((COLUMNS - 8))
+# Set cursor position
+SET_COL="\e[${COL}G"
+
+# color
+# reference 'man tput'
+BRACKET='\e[1;34m'
+NORMAL='\e[0;39m'
+FAILURE='\e[1;31m'
+SUCCESS='\e[1;32m'
+WARNING='\e[1;35m'
+INFO='\e[1;36m'

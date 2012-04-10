@@ -1,0 +1,4 @@
+*
+apt-get install scim scim-table-zh
+
+configure zhinengpinyin. control+space

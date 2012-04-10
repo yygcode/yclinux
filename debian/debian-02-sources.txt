@@ -1,0 +1,18 @@
+deb http://http.us.debian.org/debian stable main contrib non-free
+deb http://non-us.debian.org/debian-non-US stable/non-US main contrib non-free
+deb http://security.debian.org stable/updates main contrib non-free
+
+# deb cdrom:[Debian GNU/Linux 6.0.1a _Squeeze_ - Official amd64 CD Binary-1 20110322-16:05]/ squeeze main
+
+# Line commented out by installer because it failed to verify:
+#deb http://security.debian.org/ squeeze/updates main
+# Line commented out by installer because it failed to verify:
+#deb-src http://security.debian.org/ squeeze/updates main
+
+# squeeze-updates, previously known as 'volatile'
+# A network mirror was not selected during install.  The following entries
+# are provided as examples, but you should amend them as appropriate
+# for your mirror of choice.
+#
+# deb http://ftp.debian.org/debian/ squeeze-updates main
+# deb-src http://ftp.debian.org/debian/ squeeze-updates main

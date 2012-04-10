@@ -23,13 +23,11 @@ fi
 
 cd $compile_source || echo_exit "into compile source $compile_source failed"
 [ "$1" = "all" ] && { make distclean; rm -f lfs-installed; }
-if [ ! -e "Makefile" ]; then
-	./configure \
-		--build=$lfs_tgt \
-		--prefix=/usr \
-		--enable-multibyte \
-		|| echo_exit "configure $pack failed"
-fi
+./configure \
+	--build=$lfs_tgt \
+	--prefix=/usr \
+	--enable-multibyte \
+	|| echo_exit "configure $pack failed"
 
 if [ "$1" = "reinstall" ] || [ ! -e "lfs-installed" ]; then
 	# make

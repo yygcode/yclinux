@@ -1,0 +1,19 @@
+* bootable USB
+	* download iso.
+		http://cdimage.debian.org/debian-cd/6.0.4/i386/iso-cd/debian-6.0.4-i386-CD-1.iso
+	* download boot.img.gz
+		ftp://ftp.debian.org/debian/dists/stable/main/installer-i386/current/images/hd-media/boot.img.gz
+	* part USB as two or more partitions. (e.g.: /dev/sdb, /dev/sdb1, /dev/sdb2)
+	* install boot.img:
+		zcat boot.img.gz > /dev/sdb1
+	* copy iso:
+		mkfs.vfat /dev/sdb2
+		mount /dev/sdb2 /mnt
+		cp debian-6.0.4-i386-CD-1.iso /mnt
+		umount /dev/sdb2
+	* install mbr
+		install-mbr -e1 -p1 /dev/sdb
+
+* install debian.
+	* boot from BIOS and select USB boot.
+	* install

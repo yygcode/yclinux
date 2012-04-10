@@ -1,0 +1,67 @@
+#! /bin/sh
+#
+# rc - starts/stops services on system boot or runlevel changes.
+#
+
+# Init sets following envs:
+#	PATH		/bin:/usr/bin:/sbin:/usr/sbin
+#	INIT_VERSION	Useful to determine if a script runs directly from init
+#	RUNLEVEL	The current system runlevel
+#	PREVLEVEL	The previous runlevel (useful after a runlevel switch)
+#	CONSOLE		The system console. Inherited from the kernel.
+#
+# Author: yygcode@gmail.com
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+scriptname=$0
+
+umask 022
+
+on_exit()
+{
+	echo "error: '$scriptname' exited outside the expected code flow"
+}
+trap on_exit EXIT
+
+# ignore ctrl-c, etc.
+trap ':' INT QUIT TSTP
+
+# translate newline to carriage return-newline
+stty onlcr 0>&1
+
+# set & export runlevel (current level) and prelevel (previous level)
+runlevel=$RUNLEVEL
+[ -z "$1" ] || runlevel=$1
+if [ -z "$runlevel" ]; then
+	echo "Usage: $scriptname <runlevel>" >&2
+	exit 1
+fi
+prevlevel=$PREVLEVEL
+[ -n "$prevlevel" ] || prevlevel=N
+
+export runlevel prevlevel
+
+if [ -f /etc/default/rcS ]; then
+	. /etc/default/rcS
+fi
+
+if [ -f /lib/services/init-functions ]; then
+	. /lib/services/init-functions
+else
+	log_action_msg() { echo "INFO: $@"; }
+	log_warning_msg() { echo "WARN: $@"; }
+	log_failure_msg() { echo "FAIL: $@"; }
+fi
+
+for k in /etc/rc$runlevel.d/K*; do
+	[ -x "$k" ] || continue
+	$k stop
+done
+
+for s in /etc/rc$runlevel.d/S*; do
+	[ -x "$s" ] || continue
+	$s start
+done
+trap - EXIT
+exit 0

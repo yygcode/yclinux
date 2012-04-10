@@ -1,0 +1,58 @@
+#! /bin/sh
+
+NETDOWN=yes
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+[ -f /etc/default/halt ] && . /etc/default/halt
+
+. /lib/services/init-functions
+
+do_stop()
+{
+	[ -n "$INIT_HALT" ] ||
+	case "$HALT" in
+	[Hh]*)
+		INIT_HALT=HALT
+		;;
+	*)
+		INIT_HALT=POWEROFF
+		;;
+	esac
+
+	if [ "$INIT_HALT" = "POWEROFF" ] && [ -x /etc/init.d/ups-monitor ];
+	then
+		/etc/init.d/ups-monitor poweroff
+	fi
+
+	# hard driver
+	hddown="-h"
+	[ -n "$(grep '^md.*active' /proc/mdstat 2>/dev/null)" ] && hddown=""
+
+	# don't poweroff for halt.
+	poweroff="-p"
+	[ "$INIT_HALT" = "HALT" ] && poweroff=""
+
+	# network interfaces
+	netdown="-i"
+	[ "$NETDOWN" = "no" ] && netdown=""
+
+	log_action_msg "System halt now"
+	halt -d -f $netdown $poweroff $hddown
+}
+
+case "$1" in
+start)
+	# no-op
+	;;
+restart|reload|force-reload)
+	echo "Error: argument '$1' not supported" >&2
+	exit 1
+	;;
+stop)
+	do_stop
+	;;
+*)
+	echo "Usage: $0 start|stop" >&2
+	exit 1
+	;;
+esac

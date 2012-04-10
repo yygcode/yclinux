@@ -1,0 +1,21 @@
+* udev
+	*
+* running control
+
+* config
+	* getenv(UDEV_CONFIG_FILE).
+	* SYSCONFDIR "/etc/udev/udev.conf"
+	* # comment line
+	* [:space:] esace ...
+	* format: key="val" or key='value'
+	* recognized:
+		* udev_log
+		* udev_root
+		* udev_run
+		* udev_sys
+		* udev_rules
+	* getenv(UDEV_LOG)
+
+* rules.d:
+	* PKGLIBEXECDIR/udev/rules.d
+	* SYSCONFDIR/udev/rules.d
