@@ -1,0 +1,121 @@
+# = iSCSI优化迭代过程5 ─ 测试 =
+<<TableOfContents>>
+
+	* 时间 20100609 - 20100613
+	* SVN库版本号：386
+
+== 稳定性测试 ==
+	* 在initiator端写程序测试稳定性
+	* 程序运行平台 Linux
+	* 两个块设备：
+		* /dev/sdx 用于测试稳定性的iSCSI磁盘
+		* /dev/loopx 用于对比测试的内存loop块设备，生成方式
+		{{{#!shell
+# 在内存文件系统生成一个内存文件
+cd /dev/shm
+dd if=/dev/zero of=ramfile bs=1M count=100
+
+# losetup -a 查看当前已有的loop设备，选取一个没有被使用的名称，例如/dev/loop6
+losetup -a
+
+# 用内存文件建立loop设备
+losetup /dev/loop6 ramfile
+
+# 使用 fdisk 查看设备
+fdisk -l /dev/loop6
+		}}}
+	
+	* void init_device(off64_t min_offset, int test_size)
+		* 初始化写入/dev/sdx 和 /dev/loopx
+		* /dev/sdx 从min_offset偏移量写 test_size 长度的 随机数据
+		* /dev/loopx 从0偏移量写 test_size 长度的 随机数据
+		
+	* bool verify_device(off64_t min_offset, int test_size)
+		* 校验写入数据
+		* 比较 /dev/sdx 从min_offset偏移量 test_size 长度的值 是否与 /dev/loopx 从0偏移量 test_size 长度的值 完全相同
+			* 完全相同时返回值为true，否则为false
+	
+	* off64_t get_min_offset(int64_t device_size, int test_size)
+		* 获取一个随机最小偏移量
+		* 返回值为 [0, device_size - test_size]区间的随机值
+		
+	* off64_t get_offset(off64_t min_offset, off64_t max_offset)
+		* 返回写入的偏移量，取值区间[min_offset, max_offset]
+		* 以 50% 的概率返回 非full strip对齐的偏移量
+		* 以 50% 的概率返回 full strip对齐的偏移量
+	
+	* int get_length(int max_buf)
+		* 返回写入数据的长度
+		* 返回的 数据长度在 [1, max_buf] 之间随机分布
+	
+	* bool get_direct()
+		* 以 50% 的概率返回 true
+		* 以 50% 的概率返回 false
+	
+	* int get_operation()
+		* 获取操作类型（写或读）
+		* 以 60% 的概率返回 OPERATION_WRITE
+		* 以 40% 的概率返回 OPERATION_READ
+	
+	* void fill_buf_random(char* buf, int length)
+		* 给 buf 中填充随机数据，总字节数为length
+		
+	* void sleep_some_time()
+		* 以 50% 的概率直接返回
+		* 以 50% 的概率睡眠 [1, 20] 之间随机分布的毫秒数
+		
+	* void test_device()
+		* 主测试函数
+		
+		* 定义 int64_t device_size 表示测试盘的总大小
+			
+		* 定义 int test_size 表示测试区间的总长度
+			* 取 10M
+		
+		* 定义 int max_buf 表示每次读写的最大长度
+			* 取 2M
+			
+		* 分配内存 buf，长度为 max_buf
+			* 调用 fill_buf_random(buf, max_buf) 填充随机数据
+		
+		* 调用 init_device() 初始化设备
+		
+		* 调用 verify_device() 验证设备数据
+			* 失败时程序退出
+		
+		* 定义 off64_t min_offset 表示 /dev/sdx 的起始偏移量
+			* 通过调用 get_min_offset(device_size, test_size)得到
+			
+		* 定义 off64_t max_offset 表示测试区间的最大偏移量
+			* 取 min_offset + test_size - max_buf
+			
+		* while(1) {
+			* 调用 get_offset() 得到偏移量 offset
+			* 调用 get_length() 得到写入长度 length
+			* 调用 get_direct() 得到 direct
+				* 如果 direct != direct_pre(上次的direct值):
+					* direct_pre = direct
+					* 重新 open /dev/sdx，如果direct为真，open时加 O_DIRECT 选项
+					* 如果 direct 为真:
+						* 调整 offset 和 length 对齐到 blocksize
+			* 调用 get_operation() 得到操作类型 operation
+				
+			* 写入或读出数据到测试盘 /dev/sdx 以及比较盘 /dev/loopx:
+				* lseek64(fd_test, offset, SEEK_SET)
+				* lseek64(fd_compare, offset - min_offset, SEEK_SET)
+				* 如果 operation == OPERATION_WRITE:
+					* write(fd_test, buf, length)
+					* write(fd_compare, buf, length)
+				* 否则:
+					* read(fd_test, buf, length)
+					* read(fd_compare, buf, length)
+				
+			* 调用 sleep_some_time() 随机睡眠
+			* 每隔 1 分钟 校验一次：
+				* 调用 verify_device()，如果返回值为false就程序退出
+				* 更新 min_offset 和 max_offset:
+ 					* min_offset = get_min_offset(device_size, test_size);
+ 					* max_offset = min_offset + test_size - max_buf;
+		* } //循环
+----
+[[Category-WisESP]]

@@ -1,0 +1,447 @@
+# SCST源码阅读2：块设备IO相关函数调用过程
+<<TableOfContents>>
+
+本文scst的代码来源于 https://scst.svn.sourceforge.net/svnroot/scst/trunk  r1685
+----
+== 块设备IO操作叶子函数submit_bio()被调用的路径 ==
+
+	1. submit_bio()
+		1. blockio_exec_rw()
+			1. vdisk_do_job()
+				1. vdisk_do_job 被赋值给了 struct scst_dev_type vdisk_blk_devtype中的exec函数指针，因此需要考察vdisk_blk_devtype.exec被调用之处
+	
+查找 "->exec("，只有scst_targ.c 的 scst_do_real_exec() 函数执行了handler->exec(cmd)
+
+	1. scst_do_real_exec()
+		1. scst_real_exec()
+			1. scst_process_active_cmd()
+		1. scst_exec()
+			1. scst_send_for_exec()
+				1. scst_process_active_cmd()
+
+调用scst_do_real_exec()的各分支都有 scst_process_active_cmd()，因此只需要找scst_process_active_cmd()被调用的路径。
+
+== scst_process_active_cmd()被调用的路径 ==
+--------
+=== scst_cmd_init_done() ===
+	1. scst_cmd_init_stage1_done()
+		1. scsi_cmnd_start()
+			1. cmnd_rx_start()
+				1. process_read_io() （网络文中已有）
+	1. scst_init_session()
+		1. scst_register_session()
+			1. iscsi_session_alloc()
+				1. `__add_session()`
+					1. add_session()
+						1. ioctl()  （由用户空间程序执行）
+		1. '''scst_global_mgmt_thread()'''
+			1. scst_start_all_threads()
+				1. init_scst()
+					1. module_init(init_scst)  （模块加载时执行）
+--------
+=== scst_process_redirect_cmd() ===
+==== scst_restart_cmd() ====
+===== iscsi_restart_cmnd() =====
+	1. conn_reinst_finished()
+		1. iscsi_task_mgmt_affected_cmds_done()
+			1. struct scst_tgt_template iscsi_template.task_mgmt_affected_cmds_done = iscsi_task_mgmt_affected_cmds_done
+				1. scst_call_task_mgmt_affected_cmds_done()
+					1. scst_mgmt_affected_cmds_done()
+						1. scst_process_mgmt_cmd()
+							1. '''scst_tm_thread()'''
+								1. scst_start_all_threads() （上面已有）
+					1. scst_mgmt_cmd_send_done()
+						1. scst_process_mgmt_cmd() （上面已有）
+					
+		1. sess_reinst_finished()
+			1. iscsi_task_mgmt_affected_cmds_done() （上面已有）
+			1. session_free()
+				1. conn_free()
+					1. iscsi_conn_release()
+						1. struct kobj_type iscsi_conn_ktype.release = iscsi_conn_release
+							1. scst_unregister()
+								1. target_destroy()
+									1. `__del_target()`
+									1. target_del_all()
+								1. scst_unregister_target_template()
+									1. iscsi_init()
+										1. module_init(iscsi_init)  （模块加载时执行）
+									1. iscsi_exit()
+										1. module_exit(iscsi_exit) （卸载模块时执行）
+									1. exit_this_scst_driver()
+										1. module_exit(exit_this_scst_driver) （卸载模块时执行）
+					1. close_conn()
+						1. '''close_conn_thr()'''
+							1. start_close_conn()
+								1. process_read_io() （网络文中已有）
+						1. start_close_conn() (上面已有）
+						
+				1. `__add_session()` （上面已有）
+				1. `__del_session()`
+					1. del_session()
+						1. ioctl() （由用户空间程序执行）
+					1. target_del_session()
+						1. `__add_session()` （上面已有）
+						1. target_del_all_sess()
+							1. cmnd_tx_end()
+								1. iscsi_send()
+									1. iscsi_try_local_processing()
+										1. iscsi_xmit_response()
+											1. struct scst_tgt_template iscsi_template.xmit_response = iscsi_xmit_response
+												1. scst_xmit_response()
+													1. scst_process_active_cmd()   （递归调用）
+									1. process_write_queue()
+										1. scst_do_job_wr()
+											1. '''istwr()''' （写网络线程入口）
+												1. iscsi_init() （上面已有）
+							1. target_del_all()
+								1. release()
+								1. scst_unregister() （上面已有）
+	1. data_out_end()
+		1. cmnd_rx_end()
+			1. process_read_io() （网络文中已有）
+	1. iscsi_cmnd_exec()
+		1. iscsi_push_cmnd()
+			1. cmnd_rx_end() （上面已有）
+===== cmnd_done() <= cmnd_put() =====
+	1. cmnd_done() （递归调用）
+	1. req_cmnd_release_force()
+		1. iscsi_restart_cmnd() （上面已有）
+		1. iscsi_fail_data_waiting_cmnd()
+			1. iscsi_check_tm_data_wait_timeouts()
+				1. close_conn() （上面已有）
+				1. scst_do_job_rd()
+					1. '''istrd()''' （读网络线程入口）
+			1. conn_abort()
+				1. close_conn() （上面已有）
+		1. iscsi_push_cmnd()
+			1. cmnd_rx_end() （上面已有）
+		1. iscsi_xmit_response() （上面已有）
+		1. free_pending_commands()
+			1. close_conn() （上面已有）
+		1. free_orphaned_pending_commands()
+			1. close_conn() （上面已有）
+		1. close_conn() （上面已有）
+	1. req_cmnd_release()
+		1. iscsi_restart_cmnd() （上面已有）
+		1. req_cmnd_release_force() （上面已有）
+		1. nop_out_exec()
+			1. iscsi_cmnd_exec() （上面已有）
+		1. logout_exec()
+			1. iscsi_cmnd_exec() （上面已有）
+		1. iscsi_cmnd_exec() （上面已有）
+		1. cmnd_rx_end() （上面已有）
+		1. iscsi_xmit_response() （上面已有）
+		1. iscsi_send_task_mgmt_resp()
+			1. execute_task_management()
+				1. iscsi_cmnd_exec() （上面已有）
+			1. iscsi_task_mgmt_fn_done()
+				1. struct scst_tgt_template iscsi_template.task_mgmt_fn_done = iscsi_task_mgmt_fn_done
+					1. scst_mgmt_cmd_send_done()
+						1. scst_process_mgmt_cmd()
+							1. '''scst_tm_thread()''' （上面已有）
+		1. iscsi_scsi_aen()
+			1. iscsi_report_aen()
+				1. struct scst_tgt_template iscsi_template.report_aen = iscsi_report_aen
+					1. scst_gen_aen_or_ua()
+						1. scst_capacity_data_changed()
+							1. vdisk_resync_size()
+								1. vdisk_sysfs_resync_size_store()
+									1. static struct kobj_attribute vdisk_resync_size_attr.store = vdisk_sysfs_resync_size_store
+										1. scst_tgt_attr_store()
+											1. struct sysfs_ops scst_tgt_sysfs_ops.store = scst_tgt_attr_store
+										1. scst_dev_attr_store()
+											1. struct sysfs_ops scst_dev_sysfs_ops.store = scst_dev_attr_store
+										1. scst_sess_attr_store()
+											1. struct sysfs_ops scst_sess_sysfs_ops.store = scst_sess_attr_store
+										1. scst_store()
+											1. struct sysfs_ops scst_sysfs_ops.store = scst_store
+								1. vdisk_write_proc()
+									1. 只与fileio有关
+						1. scst_check_reassign_sess()
+							1. scst_check_reassign_sessions()
+								1. scst_alloc_add_acg()
+									1. scst_register()
+										1. iscsi_target_create()
+											1. `__add_target()`
+												1. add_target()
+													1. ioctl() （由用户空间程序执行）
+													1. scst_tgtt_mgmt_store()
+														1. struct kobj_attribute scst_tgtt_mgmt.store = scst_tgtt_mgmt_store
+															1. scst_create_tgtt_sysfs()
+																1. `__scst_register_target_template()`
+																	1. scst_register_target_template()
+																		1. iscsi_init() （上面已有）
+									1. init_scst() （上面已有）
+									1. scst_proc_group_add()
+										1. scst_proc_scsi_tgt_gen_write()
+											1. struct scst_proc_data scst_lat_proc_data.write = scst_proc_scsi_tgt_gen_write
+											1. struct scst_proc_data scst_log_proc_data.write = scst_proc_scsi_tgt_gen_write
+											1. struct scst_proc_data scst_tgt_proc_data.write = scst_proc_scsi_tgt_gen_write
+									1. scst_ini_group_mgmt_store()
+										1. struct kobj_attribute scst_ini_group_mgmt.store = scst_ini_group_mgmt_store
+								1. scst_clear_acg()
+									1. scst_destroy_acg()
+									1. scst_register() （上面已有）
+									1. scst_unregister() （上面已有）
+									1. scst_acg_sysfs_put()
+										1. scst_unregister() （上面已有）
+										1. scst_ini_group_mgmt_store() （上面已有）
+								1. scst_acg_add_name()
+									1. scst_proc_groups_names_write()
+										1. struct scst_proc_data scst_groups_names_proc_data.write = scst_proc_groups_names_write
+									1. scst_acg_ini_mgmt_store()
+										1. struct kobj_attribute scst_acg_ini_mgmt.store = scst_acg_ini_mgmt_store
+								1. scst_acg_remove_name()
+									1. scst_proc_groups_names_write() （上面已有）
+								1. scst_proc_rename_acg()
+									1. scst_proc_scsi_tgt_gen_write() （上面已有）
+								1. scst_proc_groups_names_write() （上面已有）
+								1. scst_acn_sysfs_del()
+									1. scst_clear_acg() （上面已有）
+									1. scst_acg_ini_mgmt_store() （上面已有）
+								1. scst_acg_ini_mgmt_store() （上面已有）
+						1. scst_proc_groups_devices_write()
+							1. struct scst_proc_data scst_groups_devices_proc_data.write = scst_proc_groups_devices_write
+						1. `__scst_luns_mgmt_store()`
+							1. scst_luns_mgmt_store()
+								1. struct kobj_attribute scst_luns_mgmt.store = scst_luns_mgmt_store
+							1. scst_acg_luns_mgmt_store()
+								1. struct kobj_attribute scst_acg_luns_mgmt.store = scst_acg_luns_mgmt_store
+					1. scst_report_luns_changed_sess()
+						1. scst_report_luns_changed()
+							1. scst_acg_add_dev()
+								1. scst_proc_groups_devices_write() （上面已有）
+								1. `__scst_luns_mgmt_store()` （上面已有）
+							1. scst_acg_remove_dev()
+								1. scst_unregister_device()
+									1. scst_remove()
+										1. struct class_interface scst_interface.remove = scst_remove
+								1. scst_unregister_virtual_device()
+									1. vdev_del_device()
+										1. vdisk_del_device()
+											1. struct scst_dev_type vdisk_blk_devtype.del_device = vdisk_del_device
+												1. scst_devt_mgmt_store()
+													1. struct kobj_attribute scst_devt_mgmt.store = scst_devt_mgmt_store
+										1. vcdrom_del_device()
+											1. struct scst_dev_type vcdrom_devtype.del_device = vcdrom_del_device
+												1. 1. scst_devt_mgmt_store() （上面已有）
+										1. vdisk_write_proc()
+											1. struct scst_dev_type vdisk_file_devtype.write_proc = vdisk_write_proc
+												1. scst_proc_scsi_tgt_write()
+													1. struct scst_proc_data scst_scsi_tgt_proc_data.write = scst_proc_scsi_tgt_write
+										1. vcdrom_close()
+											1. vcdrom_write_proc()
+												1. struct scst_dev_type vcdrom_devtype.write_proc = vcdrom_write_proc
+													1. scst_proc_scsi_tgt_write() （上面已有）
+										1. exit_scst_vdisk()
+											1. init_scst_vdisk_driver()
+												1. module_init(init_scst_vdisk_driver) (加载模块时执行）
+											1. exit_scst_vdisk_driver()
+												1. module_exit(exit_scst_vdisk_driver) (卸载模块时执行）
+								1. scst_proc_groups_devices_write() （上面已有）
+								1. `__scst_luns_mgmt_store()` （上面已有）
+						1. scst_check_reassign_sess() （上面已有）
+		1. iscsi_send_nop_in()
+			1. conn_nop_in_delayed_work_fn()
+				1. iscsi_conn_alloc()
+					1. `__add_conn()`
+						1. add_conn()
+							1. ioctl()  （由用户空间程序执行）
+		
+	1. rsp_cmnd_release()
+		1. execute_task_management() （上面已有）
+		1. close_conn() （上面已有）
+		1. iscsi_send() （上面已有）
+	1. iscsi_pre_exec()
+		1. scst_tgt_template iscsi_template.pre_exec = iscsi_pre_exec
+			1. scst_tgt_pre_exec()
+				1. scst_process_active_cmd() （递归调用）
+	1. cmnd_abort()
+		1. execute_task_management() （上面已有）
+	1. conn_abort()
+		1. close_conn() （上面已有）
+	1. nop_out_exec()
+		1. iscsi_cmnd_exec() （上面已有）
+	1. iscsi_preprocessing_done()
+		1. struct scst_tgt_template iscsi_template.preprocessing_done = iscsi_preprocessing_done
+			1. scst_preprocessing_done()
+				1. scst_process_active_cmd() （递归调用）
+	1. iscsi_check_closewait()
+		1. close_conn() （上面已有）
+	1. `__iscsi_put_page_callback()`
+		1. iscsi_put_page_callback()
+			1. iscsi_init() （上面已有）
+			1. CONFIG_TCP_ZERO_COPY_TRANSFER_COMPLETION_NOTIFICATION 时才用
+		1. write_data()
+			1. iscsi_do_send()
+				1. iscsi_send() （上面已有）
+==== scst_rx_data() ====
+	1. 没有调用
+==== scst_cmd_done() ====
+	1. scst_do_real_exec()
+		
+==== scst_cmd_done_local() ====
+	1. scst_exec() (上面已有）
+	1. cmd->scst_cmd_done()
+		1. vdisk_do_job() (上面已有）
+		1. blockio_check_finish()
+			1. blockio_endio()
+				1. blockio_exec_rw() (上面已有）
+			1. blockio_exec_rw() (上面已有）
+		1. scst_report_luns_local()
+			1. scst_do_local_exec()
+				1. scst_local_exec()
+					1. scst_process_active_cmd() （递归调用）
+				1. scst_exec() (上面已有）
+		1. scst_request_sense_local()
+			1. scst_do_local_exec() (上面已有）
+		1. scst_reserve_local()
+			1. scst_do_local_exec() (上面已有）
+		1. scst_release_local()
+			1. scst_do_local_exec() (上面已有）
+		1. scst_do_real_exec()
+			1. scst_real_exec() (上面已有）
+			1. scst_exec() (上面已有）
+		1. scst_do_local_exec() (上面已有）
+==== scst_tgt_cmd_done() ====
+	1. cmnd_done() (上面已有）
+--------
+=== scst_do_job_active() ===
+	1. '''scst_cmd_thread()'''
+		1. scst_add_threads()
+			1. scst_tgt_dev_setup_threads()
+				1. scst_alloc_add_tgt_dev()
+					1. scst_check_reassign_sess() （上面已有）
+					1. scst_sess_alloc_tgt_devs()
+						1. scst_init_session() （上面已有）
+					1. scst_acg_add_dev() （上面已有）
+				1. scst_create_dev_threads()
+					1. scst_assign_dev_handler()
+						1. scst_register_device()
+							1. scst_add()
+								1. struct class_interface scst_interface.add_dev = scst_add
+									1. init_scst() （上面已有）
+						1. scst_unregister_device() （上面已有）
+						1. scst_register_virtual_device()
+							1. vdev_fileio_add_device()
+							1. vdev_blockio_add_device()
+								1. vdisk_add_blockio_device()
+									1. struct scst_dev_type vdisk_blk_devtype.add_device = vdisk_add_blockio_device
+										1. scst_devt_mgmt_store() （上面已有）
+							1. vdev_nullio_add_device()
+							1. `__vcdrom_add_device()`
+							1. vdisk_write_proc()
+							1. vcdrom_open()
+						1. scst_unregister_virtual_device() （上面已有）
+						1. `__scst_register_dev_driver()`
+							1. scst_register_dev_driver()
+								1. register pass-through dev handler driver
+						1. scst_unregister_dev_driver()
+							1. unregister pass-through dev handler driver
+						1. scst_proc_assign_handler()
+							1. scst_proc_scsi_tgt_gen_write() （上面已有）
+						1. scst_devt_pass_through_mgmt_store()
+							1. 只与pass_through设备有关
+					1. scst_device_sysfs_threads_data_store()
+						1. scst_device_sysfs_threads_num_store()
+							1. struct kobj_attribute device_threads_num_attr.store = scst_device_sysfs_threads_num_store
+						1. scst_device_sysfs_threads_pool_type_store()
+							1. struct kobj_attribute device_threads_pool_type_attr.store = scst_device_sysfs_threads_pool_type_store
+					1. `__scst_acg_io_grouping_type_store()`
+						1. scst_tgt_io_grouping_type_store()
+							1. struct kobj_attribute scst_tgt_io_grouping_type.store = scst_tgt_io_grouping_type_store
+						1. scst_acg_io_grouping_type_store()
+							1. struct kobj_attribute scst_acg_io_grouping_type.store = scst_acg_io_grouping_type_store
+			1. scst_create_dev_threads() （上面已有）
+			1. scst_start_all_threads() （上面已有）
+			1. scst_proc_threads_write()
+				1. struct scst_proc_data scst_threads_proc_data.write = scst_proc_threads_write
+			1. scst_threads_store()
+				1. struct kobj_attribute scst_threads_attr.store = scst_threads_store
+	1. scst_cmd_tasklet()
+		1. init_scst() (上面已有）
+		1. scst_schedule_tasklet()
+			1. scst_cmd_init_done() （上面已有）
+			1. scst_process_redirect_cmd() （上面已有）
+	
+--------
+== list_add到active_cmd_list的函数被调用过程 ==
+执行命令的主线是： scst_cmd_thread() => scst_do_job_active() => scst_process_active_cmd()
+
+在scst_cmd_thread()函数中：
+{{{
+///scst_targ.c
+
+if (!test_cmd_threads(p_cmd_threads)) 就等待 cmd_list_waitQ
+
+///调用scst_do_job_active()使用的参数：
+scst_do_job_active(&p_cmd_threads->active_cmd_list,
+			&p_cmd_threads->cmd_list_lock, false);
+
+static inline int test_cmd_threads(struct scst_cmd_threads *p_cmd_threads)
+{
+	int res = !list_empty(&p_cmd_threads->active_cmd_list) ||
+	    unlikely(kthread_should_stop()) ||
+	    tm_dbg_is_release();
+	return res;
+}
+
+}}}
+
+因此需要处理的命令会放到 active_cmd_list中。以下是list_add到active_cmd_list的函数被调用过程。
+
+=== scst_prepare_request_sense() ===
+scst_pre_dev_done() <= scst_process_active_cmd()
+
+=== scst_complete_request_sense() ===
+scst_finish_internal_cmd() <= scst_process_active_cmd()
+
+=== scst_process_reset() ===
+	1. `__scst_dev_check_set_UA()`
+	1. scst_target_reset()
+	1. scst_lun_reset()
+
+=== __scst_check_deferred_commands() ===
+	1. scst_check_deferred_commands()
+		1. scst_post_exec_sn()
+			1. scst_real_exec() （上面已有）
+			1. scst_local_exec() （上面已有）
+	1. scst_make_deferred_commands_active()
+		1. `__scst_unblock_deferred()`
+			1. scst_unblock_deferred()
+				1. scst_free_cmd()
+					1. `__scst_cmd_put()`
+				1. scst_pre_xmit_response()
+		1. scst_on_hq_cmd_response()
+		1. scst_post_exec_sn()
+		1. scst_inc_check_expected_sn()
+
+=== scst_unblock_cmds() ===
+<= scst_unblock_dev()
+
+	1. scst_unblock_dev_cmd()
+	1. scst_dec_on_dev_cmd()
+	1. scst_dev_done()
+	1. scst_mgmt_cmd_send_done()
+
+=== scst_make_deferred_commands_active() ===
+(上面已有)
+
+=== scst_cmd_init_done() ===
+(上面已有)
+
+=== scst_process_redirect_cmd() ===
+(上面已有)
+
+=== scst_do_job_init() ===
+	* scst_init_thread()
+	
+=== scst_process_active_cmd() ===
+(上面已有)
+
+=== __scst_check_unblock_aborted_cmd() ===
+<= scst_unblock_aborted_cmds()
+
+----
+[[Category-iSCSI]]

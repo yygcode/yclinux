@@ -1,0 +1,84 @@
+# = iSCSI优化迭代过程1 =
+<<TableOfContents>>
+
+	* 时间 20100301 - 20100305
+	* SVN库版本号：
+
+	* 任务目标：
+		* 在ESP上配置运行 iSCSI-SCST
+		* 测试 iSCSI-SCST 的性能
+		* 撰写相关文档
+
+	
+----
+=== 在ESP上配置运行 iSCSI-SCST ===
+	* 交叉编译 SCST
+	* ESP上配置运行 iSCSI-SCST
+		* 要求 '''不''' 使用 scstadmin 脚本
+		* 要求掌握如下操作需要执行的命令和参数
+			* 查看当前正在运行的 target。当前正在运行的target与配置文件/etc/iscsi-scstd.conf不一定完全一致，因为在iscsi-scstd运行后可以动态地增加或删除运行的target
+			* 查看当前正在运行的每一个target中的LUN
+			* 查看当前正在运行的每一个target中的session (与initiator的连接），session中的信息至少包含target名称、initiator的名称和IP
+			* 动态地（不需要重启iscsi-scstd）增加、删除target
+			* 动态地往一个target增加删除LUN
+
+
+=== 测试 iSCSI-SCST 的性能 ===
+	* 本次迭代只测试 用 RAID0 设备作为 Target 的 LUN 的情况
+	
+	* 测试配置：
+		* 三块盘组成一个RAID0设备，作为 Target 的 LUN
+		* Initiator 机使用Windows，安装微软的 iSCSI-Initiator 软件
+		* Initiator 机 和 Target 机的网络连接为千兆
+			* 使用iperf测试网络连接速度
+			{{{
+# 服务器端
+iperf -s -l 100K
+# 客户端
+iperf -c 192.168.100.xxx -l 100K -t 60 -i 6
+			}}}
+			网速应达到900Mbps以上
+		* Initiator 机使用 iometer 软件顺序读写裸盘
+			* 设置 "# of Outstanding I/Os" 为 64
+	
+==== 测试结果记录格式 ====
+以下是一个测试结果记录的示例：
+
+||测试配置           || 速率(iometer) || 速率(iostat) || 速率(network_in) ||速率(network_out) ||CPU_us||CPU_sy||CPU_id||CPU_wa||CPU_hi||CPU_si||CPU_iscsi_us||CPU_iscsi_sy||
+|| 1M 100%read      ||              ||             ||                  ||                 ||      ||      ||      ||      ||      ||      ||            ||            ||
+|| 1M 100%write     ||              ||             ||                  ||                 ||      ||      ||      ||      ||      ||      ||            ||            ||
+	
+	* 速率(iometer) 是 iometer 显示的速率，单位 MBps
+	
+	* 速率(iostat) 是测试过程中ESP上 iostat 命令显示的相关RAID设备的读写速率，单位 MBps。使用如下命令获取：
+	{{{
+iostat 10 6
+	}}}
+	iostat显示的 Blk_read/s 和 Blk_wrtn/s 是每秒block数，每block为512字节，可用下式换算为 MBps
+	{{{
+Blk_ps * 512 / 1000000.0
+	}}}
+	
+	* 速率(network_in) 和 速率(network_out)是测试过程中ESP上 sar 命令显示的网络速率，单位 MBps。使用如下命令获取：
+	{{{
+sar -n DEV -u 10 6
+	}}}
+	
+	* CPU各栏是测试过程中ESP CPU占用的百分比典型值。（使用top查看，并取一个典型值即可）
+		* CPU_us，用户空间程序占用的CPU
+		* CPU_sy, 内核空间程序占用的CPU
+		* CPU_id, 空闲的CPU
+		* CPU_wa, 磁盘IO等待占用的CPU
+		* CPU_hi，硬件中断占用的CPU
+		* CPU_si，软件中断占用的CPU
+		
+		* CPU_iscsi_us 是 iscsi 用户空间程序占用的CPU
+		* CPU_iscsi_sy 是 iscsi 内核空间程序占用的CPU
+	
+=== 撰写相关文档 ===
+	* ESP交叉编译 SCST
+	* ESP运行iSCSI-SCST配置说明
+	* ESP运行iSCSI-SCST性能测试
+
+----
+[[Category-WisESP]]

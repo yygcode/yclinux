@@ -1,0 +1,44 @@
+﻿.subhead1
+{
+	font-weight: bold;
+	line-height: 20px;
+	font-size: 120%;
+}
+
+.subhead2
+{
+	font-weight: bold;
+	line-height: 20px;	
+}
+
+.LegacyContent
+{
+	
+}
+
+.stdtable
+{
+	width: 100%;
+}
+
+.stdtable CAPTION {
+	font-family: Verdana, Arial, Helvetica, sans-serif;
+	font-size: 125%;
+	font-weight: bold;
+	color: #606060;
+	line-height: 1.2em;
+}
+
+.stdtable EM {
+	font-size: 125%;
+	font-weight: bold;
+	color: #960058;
+	line-height: 1.2em;
+}
+
+.stdtable1 td
+{
+	padding: 0px 8px 4px 0px
+}
+
+

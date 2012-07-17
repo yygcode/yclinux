@@ -1,0 +1,84 @@
+# SCST 简易编译和配置说明
+
+=== 编译说明 ===
+	* SCST 源码下载
+	{{{
+svn co https://scst.svn.sourceforge.net/svnroot/scst/trunk
+	}}}
+	
+	* 交叉编译
+		* 把openssl开发包 openssl-dev_0.9.7g-r5_armv5te.tar.gz 中的如下目录：
+			* usr/include
+			* usr/lib
+		复制到交叉编译工具链的 /opt/arm-2007q3/arm-angstrom-linux-gnueabi 目录
+		
+		* 修改 scst/scst/src/Makefile，把下面注释掉的编译配置打开（否则编译有错）
+		{{{
+EXTRA_CFLAGS += -DCONFIG_SCST_STRICT_SERIALIZING
+		}}}
+	
+		* 编译
+		{{{
+make ARCH=arm CROSS_COMPILE=arm-angstrom-linux-gnueabi- KDIR=/opt/linux-2.6.29.1 scst
+cp -a scst/src/*.ko scst/src/dev_handlers/*.ko /opt/scst/
+
+make ARCH=arm CROSS_COMPILE=arm-angstrom-linux-gnueabi- CC=arm-angstrom-linux-gnueabi-gcc KDIR=/opt/linux-2.6.29.1 iscsi
+cp -a iscsi-scst/kernel/*.ko iscsi-scst/usr/iscsi-scst-adm iscsi-scst/usr/iscsi-scstd /opt/scst/
+		}}}
+		上面/opt/linux-2.6.29.1目录是ESP内核源码目录。/opt/scst是scst的二进制文件目录，编译完成后把该目录复制到ESP的/opt/scst目录。
+
+
+=== 配置说明 ===
+在配置文件 /etc/iscsi-scstd.conf 中配置一个target：
+{{{
+echo "Target iqn.2007-05.com.example:storage.iscsi-scst-1" >/etc/iscsi-scstd.conf
+}}}
+
+加载相关模块：
+{{{
+cd /opt/scst
+insmod scst.ko
+insmod scst_vdisk.ko
+insmod iscsi-scst.ko
+}}}
+
+启动 iscsi-scstd 服务：
+{{{
+iscsi-scstd
+}}}
+
+把scst的trace_level置为none，否则性能很低：
+{{{
+cd /proc/scsi_tgt
+find -type f -name "trace_level" | while read line;do echo none > $line;done
+}}}
+
+配置vdisk
+{{{#!shell
+# 把 /dev/sdb 配置为vdisk，名称为 vdisk0，此时默认是 FILEIO 模式
+echo "open vdisk0 /dev/sdb" > /proc/scsi_tgt/vdisk/vdisk
+
+# === 相关的命令 ===
+# 关闭 vdisk0
+# echo "close vdisk0" > /proc/scsi_tgt/vdisk/vdisk
+
+# 配置一个 BLOCKIO 模式的vdisk
+# echo "open vdisk0 /dev/md1 BLOCKIO" > /proc/scsi_tgt/vdisk/vdisk
+}}}
+
+为特定的target增加一个group
+{{{
+echo "add_group Default_iqn.2007-05.com.example:storage.iscsi-scst-1" >/proc/scsi_tgt/scsi_tgt
+}}}
+
+增加 vdisk0 到group中（也即增加vdisk0到target中），LUN ID 为0
+{{{
+echo "add vdisk0 0" > /proc/scsi_tgt/groups/Default_iqn.2007-05.com.example\:storage.iscsi-scst-1/devices
+}}}
+
+从group中删除 vdisk0（也即从target中删除vdisk0）
+{{{
+echo "del vdisk0" > /proc/scsi_tgt/groups/Default_iqn.2007-05.com.example\:storage.iscsi-scst-1/devices
+}}}
+----
+[[Category-iSCSI]]

@@ -1,0 +1,533 @@
+# = iSCSI优化迭代过程5 =
+<<TableOfContents>>
+
+	* 时间 20100604 - 20100613
+	* SVN库版本号：386
+
+== SCST 与 RAID5 联合实现零拷贝的Full Stripe Write ==
+
+	* Full Stripe Write（参考文章[[RAID5初始化的作用]]） <<BR>>
+	如果一次磁盘写操作的数据正好映射满一个Stripe，则该次写更新了校验组中所有的Strip，相应的校验块的校验值仅根据新的数据块的值就可以计算出来，该过程无需读盘操作。完全划分的写不需要任何多余的读操作，是RAID5中效率最高的一种写操作。
+	
+	* 从 SCST 到 RAID5 的零拷贝Full Stripe Write <<BR>>
+		* 原来的过程是SCST提交bio后，raid5模块会把数据复制到自己的缓存中，多了一次数据拷贝
+		* 如果 SCST提交的bio是Full Stripe Write的数据，raid5模块可以直接计算校验值后把数据写入磁盘，无需数据拷贝以及运行原先的流程，从而实现 iSCSI + RAID5 在顺序写时有较高的速率。
+
+== SCST + RAID5 实现零拷贝 Full Stripe Write 所需要满足的条件 ==
+
+=== 提交的bio数据对齐的条件 ===
+	1. 写入的起始位置（loff_start）stripe对齐。假如有4块盘，chunk大小为64K，则 loff_start 对齐到
+	{{{
+(4 - 1) * 64K = 192K
+	}}}
+	
+	1. 写入字节数为full stripe整数倍。假如有4块盘，chunk大小为64K，则字节数应为
+	{{{
+N * (4 - 1) * 64K = N * 192K
+	}}}
+
+	1. bio所有bio_vec页面对齐。即
+	{{{
+bio_vec[i]->bv_len = PAGE_SIZE
+bio_vec[i]->bv_offset = 0
+	}}}
+	
+
+注：条件1、2保证了数据stripe对齐，条件3是raid5 xor计算所要求。
+
+=== 提交的bio数据写入位置无重叠的条件 ===
+	* 提交到RAID5的bio的写入位置不能有重叠。由于 SCST 提交的bio有两种类型：
+		* 非Full Stripe Write类型（以下称为非FSW类型），RAID5模块对此类型的bio按原来的流程处理（raid5线程）
+		* Full Stripe Write类型（以下称为FSW类型），RAID5模块对此类型的bio按新的流程处理（fsw线程）
+	如果提交的bio写入位置有重叠，有可能出现后提交的bio先写入磁盘，导致重叠位置出现数据错误。
+
+=== 其他条件 ===
+	* 每个bio对应一个full stripe，此是为了简化RAID5部分的处理
+	
+== 实现细节（SCST部分） ==
+
+=== 相关数据结构定义 ===
+	* struct bio_info_t结构
+	{{{#!cplusplus
+typedef struct ptr_entry
+{
+	void* ptr;
+	struct list_head ptr_entry;
+} ptr_entry_t;
+
+typedef struct sgv_info
+{
+	///用于释放sgv
+	struct sgv_pool_obj *sgv;
+	struct scst_mem_lim *mem_lim;
+	
+	struct list_head sgv_info_entry;
+	
+	///每提交一个包含本sgv数据的bio，ref_count就加1
+	int ref_count;
+} sgv_info_t;
+
+///提交bio时把bi_private设置为struct bio_info_t* 指针
+///raid5模块把bio->bi_private指针转换为 *(struct page ***) 得到pages指针数组，数组的大小为 full_stripe_size/PAGE_SIZE
+///当bio->bi_private的最后一bit为1时，表示该bio为Full Stripe Write类型
+typedef struct bio_info
+{
+	struct page **pages;
+	
+    struct scst_vdisk_dev *virt_dev;
+
+    ///每一个bio里的数据写入位置是连续的
+	struct bio *bio;
+	
+	///用于保存 bio中的bi_flags，重置bio时使用
+	unsigned long bi_flags;
+	
+	///写入起始位置（偏移字节数），loff_start = (loff_t)lba_start << virt_dev->block_shift;
+	loff_t loff_start;
+	///bio里数据的字节数
+	int length;
+	
+	struct list_head bio_info_entry;
+	
+	///单个bio里可能包含属于多个sgv的page
+	///一个sgv可能位于多个bio中，因此需要使用 ptr_list
+	struct list_head sgv_ptr_list;
+	
+	///本bio与前面的写入位置重叠的bio的数量
+	///前面的bio写入完成时，把本bio的overlap_count减1,减到0时本bio就可以提交了
+	int overlap_count;
+	
+	///与本bio写入位置重叠的后面的bio列表
+	///一个bio可能与多个bio重叠，因此需要使用 ptr_list
+	struct list_head overlap_bio_ptr_list;
+	
+	///bio是否已经完成写入，在bio_endio()函数中把该值置为1
+	bool complete;
+} bio_info_t;
+	}}}
+
+	* 定义 int full_stripe_size 表示 full stripe 的字节数，例如4块盘、chunk为64K的RAID为 (4-1)*64*1024=196608
+	
+	* 定义 struct list_head bio_idle_list 用于保存未使用的bio
+		* 调用alloc_bio_info()，预先分配 bio_info_cache_num 个bio_info， 链到 bio_idle_list 之下
+		
+	* 定义 struct list_head bio_normal_list 用于保存 非FSW 的bio
+		
+	* 定义 struct list_head bio_fsw_list 用于保存 FSW 的bio
+	
+	* 定义 struct list_head sgv_idle_list 用于保存未使用的sgv_info
+		* 调用alloc_sgv_info()，预先分配 sgv_info_cache_num 个sgv_info， 链到 sgv_idle_list 之下
+
+	* 定义 struct list_head ptr_idle_list 用于保存未使用的ptr_entry
+		* 预先分配 ptr_entry_cache_num 个ptr_entry， 链到 ptr_idle_list 之下
+	
+	* 定义 bio_info_t* bio_pending 用于保存当前待决状态的bio
+		* 初始值为调用 get_idle_bio_info() 得到的一个空数据的bio
+		
+=== 相关函数 ===
+	* static inline bio_info_t* alloc_bio_info(struct scst_vdisk_dev *virt_dev)
+		* 预先分配 bio_info->pages，大小为 virt_dev->full_stripe_size/PAGE_SIZE
+		* 预先分配 bio_info->bio，nr_vecs取为min(bio_get_nr_vecs(bdev), BIO_MAX_PAGES);
+		{{{#!cplusplus
+bio_info->virt_dev = virt_dev;
+bio_info->bio->bi_private = bio_info;
+INIT_LIST_HEAD(&bio_info->sgv_ptr_list);
+INIT_LIST_HEAD(&bio_info->overlap_bio_ptr_list);
+		}}}
+	
+	* static inline bio_info_t* get_idle_bio_info(struct scst_vdisk_dev *virt_dev)
+		* 如果 bio_idle_list 不为空，就从bio_idle_list中取出一个bio返回
+		* 否则 bio_idle_list 为空，就调用alloc_bio_info()生成一个新的bio返回
+
+	* static inline sgv_info_t* alloc_sgv_info()
+		* 初始化分配的sgv_info
+	
+	* static inline sgv_info_t* get_idle_sgv_info(struct list_head *sgv_idle_list)
+		* 如果 sgv_idle_list 不为空，就从sgv_idle_list中取出一个sgv_info返回
+		* 否则 sgv_idle_list 为空，就调用alloc_sgv_info()生成一个新的sgv_info返回
+
+	* static inline ptr_entry_t* get_idle_ptr_entry(struct list_head *ptr_idle_list)
+		* 如果 ptr_idle_list 不为空，就从ptr_idle_list中取出一个ptr_entry返回
+		* 否则 ptr_idle_list 为空，就生成一个新的ptr_entry返回
+	
+	* static inline void reset_bio(bio_info_t *bio_info)
+		* 重置bio
+		* struct bio_vec *bvl = bio_info->bio->bi_io_vec;
+		* int nr_iovecs = bio_info->bio->bi_max_vecs;
+		* bio_destructor_t *bi_destructor = bio_info->bio->bi_destructor;
+		* bio_init(bio_info->bio);
+		* bio_info->bio->bi_io_vec = bvl;
+		* bio_info->bio->bi_max_vecs = nr_iovecs;
+		* bio_info->bio->bi_destructor = bi_destructor;
+		* bio_info->bio->bi_flags = bio_info->bi_flags;
+		* bio_info->bio->bi_private = bio_info;
+		
+	* static inline void add_idle_bio(bio_info_t *bio_info)
+		* 加入一个使用过的bio_info到 bio_idle_list 链表中
+		* 需要重置bio_info中的相关成员：
+			* bio_info->length = 0;
+			* bio_info->overlap_count = 0;
+			* bio_info->complete = 0;
+			* reset_bio(bio_info);
+			* INIT_LIST_HEAD(bio_info->sgv_ptr_list);
+			* INIT_LIST_HEAD(bio_info->overlap_bio_ptr_list);
+	
+	* static inline void blockio_submit(struct bio *bio, int *n_bio_submit)
+	{{{#!cplusplus
+(*n_bio_submit)++;
+submit_bio(1, bio);
+	}}}
+	
+	* static inline bool bio_overlap(bio_info_t* bio_info1, bio_info_t* bio_info2)
+		* 当两个bio的写入位置有重叠时返回值为真
+		{{{#!cplusplus
+static inline bool bio_overlap(bio_info_t* bio_info1, bio_info_t* bio_info2)
+{
+	if(bio_info1->loff_start < bio_info2->loff_start) {
+		return (bio_info2->loff_start - bio_info1->loff_start) < bio_info1->length;
+	} else {
+		return (bio_info1->loff_start - bio_info2->loff_start) < bio_info2->length;
+	}
+}
+		}}}
+	
+	* void handle_bio_complete(bio_info_t* bio_info1)
+		* 只能在vdisk线程中调用
+		
+		* list_for_each(pos, bio_info1->sgv_ptr_list) {
+			* 从pos得到ptr_entry，从ptr_entry得到sgv_info
+			* sgv_info->ref_count减1，如果sgv_info->ref_count为0:
+				* 调用sgv_pool_free()释放相关内存
+				* 把sgv_info加入sgv_idle_list
+		* } //循环
+		
+		* list_for_each(pos, bio_info1->overlap_bio_ptr_list) {
+			* 从pos得到ptr_entry，从ptr_entry得到bio_info2
+			* bio_info2->overlap_count--;
+			* 如果 bio_info2->overlap_count == 0 就 blockio_submit(bio_info2->bio, &virt_dev->n_bio_submit)
+		* } //循环
+		
+		* 把 bio_info->sgv_ptr_list 中的所有元素转移到 ptr_idle_list：
+			* list_splice(&bio_info->sgv_ptr_list, &ptr_idle_list);
+		
+		* 把 bio_info->overlap_bio_ptr_list 中的所有元素转移到 ptr_idle_list：
+			* list_splice(&bio_info->overlap_bio_ptr_list, &ptr_idle_list);
+			
+		* 把bio_info1从链表中删除:
+			* `__list_del(bio_info1->bio_info_entry.prev, bio_info1->bio_info_entry.next)`
+
+		* 调用add_idle_bio(bio_info1)加入到bio_idle_list中
+		
+	* bool bio_search_overlap_by_list(bio_info_t* bio_info1, struct list_head *bio_info_list)
+		* 搜索bio与bio_info_list中的bio是否有写入位置重叠
+		* 有重叠时返回值为真
+	
+		* list_for_each(pos, bio_info_list) {
+			* 从pos得到bio_info2
+			* 如果 bio_info2->complete:
+				* 调用 handle_bio_complete(bio_info2)
+				* continue
+			* 如果 bio_info1 与 bio_info2 有重叠，就把bio_info1(后提交的bio）加到bio_info2（先提交的bio）的overlap_bio_ptr_list中:
+				* 调用get_idle_ptr_entry()得到一个ptr_entry
+				* ptr_entry->ptr = bio_info1
+				* 把ptr_entry加入bio_info2->overlap_bio_ptr_list
+				* bio_info1->overlap_count++
+				* overlap = 1
+		* } //循环
+			
+	* static inline bool bio_search_overlap(bio_info_t* bio_info)
+		* 搜索bio与前面的bio是否有写入位置重叠
+		* 有重叠时返回值为真
+		* bio_normal_list 和 bio_fsw_list 都要搜索，作为参数调用bio_search_overlap_by_list()
+	
+	* void dispatch_bio(bio_info_t* bio_info, int action_type, sgv_info_t *sgv_info)
+		* 派发一个bio
+		* sgv_info参数可为NULL
+		
+		* sgv_info参数：
+			* 在 blockio_exec_write() 中只调用一次get_idle_sgv_info()得到一个sgv_info，并设置好相应值
+			* 在一次blockio_exec_write()调用中，不同的bio使用相同的sgv_info
+			* 在 blockio_exec_write() 函数中， sgv_info->sgv->ref_cnt 加1
+			
+			* 如果 sgv_info != NULL:
+				* 在本函数内部 sgv_info->ref_count加1（每dispatch一个bio，相应的sgv_info引用加1）
+				* 调用get_idle_ptr_entry()得到一个ptr_entry
+				* ptr_entry->ptr = sgv_info
+				* 把 ptr_entry 链到bio_info->sgv_ptr_list
+			
+		* action_type参数：
+			* ACT_SUBMIT_NORMAL，普通bio提交，需要搜索overlap:
+				* 如果有overlap，就不提交
+					* 如果提交就调用 blockio_submit()提交
+				* bio_info链到bio_normal_list
+				* bio_pending = get_idle_bio_info()
+				
+			* ACT_SUBMIT_FSW，FSW bio提交，需要搜索overlap
+				* bio->bi_private |= 0x1;
+				* 如果有overlap，就不提交
+					* 如果提交就调用 blockio_submit()提交
+				* bio_info链到bio_fsw_list
+				* bio_pending = get_idle_bio_info()
+				
+			* ACT_PENDING，保持 bio 在待决状态，不提交，不需要搜索overlap，但也需要处理sgv_info参数
+				* 此时bio_pending不变
+			
+			* ACT_SUBMIT_PENDING_TO_NORMAL, 把 bio 中的旧数据按normal方式加入一个或多个bio提交
+					* bio_normal = bio_info;
+					* do {
+						* 把bio_info中的剩余旧数据以normal方式加入bio_normal，dispatch_bio(bio_normal, ACT_SUBMIT_NORMAL, NULL)
+							* 加入bio_normal的此部分数据的长度 len 是以下两者中之一：
+								* len 是所有剩余旧数据的长度，此时 goto NEXT
+								* 或者 len 是一个bio所能容纳的最大数据长度
+						* bio_normal = bio_pending
+							* 此处不能用 bio_normal = get_idle_bio_info()
+							* 因为上面dispatch_bio()会调用 bio_pending = get_idle_bio_info()
+							* 如果调用了多次dispatch_bio()，而又没有使用bio_normal = bio_pending，就会造成bio泄漏
+						
+						* 把bio_info中的sgv_info加到bio_normal:
+								* list_for_each(pos, bio_info->sgv_ptr_list) {
+									* 从pos得到ptr_entry，从ptr_entry得到sgv_info1
+									* sgv_info1->ref_count加1:
+									* 调用get_idle_ptr_entry()得到一个ptr_entry
+									* ptr_entry->ptr = sgv_info1
+									* 把 ptr_entry 链到bio_normal->sgv_ptr_list
+								* } //循环
+								
+						* bio_normal->bio->bi_bdev = bio_info->bio->bi_bdev;
+					* } while(true)
+
+	* blockio_exec_write() 函数的处理 <<BR>>
+		* 设置 sgv_info:
+			* sgv_info = get_idle_sgv_info()
+			* 设置 sgv_info 的 sgv 和 mem_lim 成员
+			* sgv_info->sgv->ref_cnt加1
+		* while (length > 0) {
+			* while (len > 0) {
+				* 是否需要新的bio_info:
+				{{{#!cplusplus
+if (need_new_bio) {
+NEW_BIO:
+	bio_info = bio_pending;
+	need_new_bio = 0;
+	//判断状态
+/*
+	* 如果 bio_info->length == 0:
+		* 设置bio:
+			bio_info->bio->bi_end_io = blockio_endio_write;
+			bio_info->bio->bi_sector = lba_start0 <<
+					(virt_dev->block_shift - 9);
+			bio_info->bio->bi_bdev = bdev;
+			bio_info->loff_start = (loff_t)lba_start0 << virt_dev->block_shift;
+
+		* 如果loff_start 非full strip对齐，就 state = STATE_FILL_NORMAL
+		* 否则 loff_start full strip对齐，就 state = STATE_FILL_FSW
+	* 否则(此时bio_info->length > 0)：
+		* 如果loff_start与bio的结束位置连续，就 state = STATE_FILL_FSW
+		* 否则loff_start与bio的结束位置不连续:
+			* dispatch_bio(bio, ACT_SUBMIT_PENDING_TO_NORMAL, NULL)
+			* goto NEW_BIO
+*/
+}
+				}}}
+
+				* 如果 state = STATE_FILL_NORMAL:
+					* 把page按normal方式加入bio
+					* 如果加入失败：
+						* dispatch_bio(ACT_SUBMIT_NORMAL)
+						{{{#!cplusplus
+need_new_bio = 1;
+lba_start0 += thislen >> virt_dev->block_shift;
+thislen = 0;
+continue;
+						}}}
+					* 否则加入成功:
+						* 计算 new_loff_start:
+						{{{#!cplusplus
+addr += PAGE_SIZE;
+thislen += bytes;
+len -= bytes;
+off = 0;
+
+new_loff_start = (loff_t)lba_start0 << virt_dev->block_shift + thislen;
+						}}}
+						
+						* 如果 new_loff_start 是 full strip对齐:
+							* dispatch_bio(ACT_SUBMIT_NORMAL)
+							{{{#!cplusplus
+need_new_bio = 1;
+lba_start0 += thislen >> virt_dev->block_shift;
+thislen = 0;
+state = STATE_FILL_FSW;
+continue;
+							}}}
+						* 否则 new_loff_start 非 full strip对齐:
+							* continue
+					
+					* 如果 state = STATE_FILL_FSW:
+						* 把page按fsw方式加入bio
+						{{{#!cplusplus
+addr += PAGE_SIZE;
+thislen += bytes;
+len -= bytes;
+off = 0;
+						}}}
+						
+						* 如果 bio_info->length 达到 full_strip_size:
+							* dispatch_bio(ACT_SUBMIT_FSW)
+							{{{#!cplusplus
+need_new_bio = 1;
+lba_start0 += thislen >> virt_dev->block_shift;
+thislen = 0;
+continue;
+							}}}
+						
+						* 否则 bio_info->length 未达到 full_strip_size:
+							* continue
+			* } //循环， while (len > 0)
+		* } //循环， while (length > 0)
+		
+		* 如果 bio_pending->length > 0:
+			* 如果 state = STATE_FILL_FSW:
+				* 如果最后一个page数据不满页，就dispatch_bio(bio_pending, ACT_SUBMIT_PENDING_TO_NORMAL)。函数返回
+				* 如果bio_pending->length 未达到 full_strip_size:
+					* dispatch_bio(bio_pending, ACT_PENDING)
+					* 函数返回
+			* 否则(此时state == STATE_FILL_NORMAL):
+				* dispatch_bio(bio_pending, ACT_SUBMIT_NORMAL)
+				* 函数返回
+	
+	* blockio_endio_write()函数的处理
+		* if(bio_info & 0x1) bio_info &= (~0x1)
+		* n_bio_finish++
+		* bio_info->complete = 1
+		* 去掉 bio_put(bio);
+
+=== vdisk线程空闲超时后发送缓存数据的机制 ===
+	* blockio_endio_write()函数只把bio_info->complete置为1,相关处理交给vdisk进行:
+		* 释放sgv缓存占用
+		* 提交已不再重叠的bio
+		* 释放其他资源
+	
+	* handle_bio_complete()被执行的时机：
+		* 准备提交新的bio，搜索重叠时发现已完成的bio
+		* 如果一直没有新的bio提交，需要有超时机制处理已完成的bio
+	
+	* 如果一直没有新的数据来到，而前面还要一些数据缓存在 bio_pending 中未提交：
+		* 此时也需要有超时机制提交bio_pending中的数据
+	
+	* 在 struct scst_device 中加入
+		* void (*handle_idle_timeout)(void* dh_priv)
+			* 函数指针，用于vdisk线程的空闲超时发送数据处理
+		
+	* 在 struct scst_cmd_threads 中加入
+		* void *dh_priv;
+			* 类似于struct scst_device中的dh_priv，用于保存virt_dev
+		
+		* void (*handle_idle_timeout)(void* dh_priv)
+			* 函数指针，用于vdisk线程的空闲超时发送数据处理
+	
+	* vdisk_attach()函数的修改：
+		* dev->handle_idle_timeout = handle_idle_timeout;
+	
+	* scst_add_threads()函数的修改：
+		* cmd_threads->dh_priv = dev->dh_priv
+		* cmd_threads->handle_idle_timeout = dev->handle_idle_timeout
+	
+	* scst_cmd_thread()函数的处理
+		{{{#!cplusplus
+spin_lock_irq(&p_cmd_threads->cmd_list_lock);
+while (!kthread_should_stop()) {
+	wait_queue_t wait;
+	int do_job_active = 0;
+	int timeout = 0;
+	init_waitqueue_entry(&wait, current);
+
+	if (!test_cmd_threads(p_cmd_threads)) {
+		add_wait_queue_exclusive_head(
+			&p_cmd_threads->cmd_list_waitQ,
+			&wait);
+		for (;;) {
+			set_current_state(TASK_INTERRUPTIBLE);
+			if (test_cmd_threads(p_cmd_threads)) {
+				//以do_job_active方式跳出for循环
+				do_job_active = 1;
+				break;
+			} else if(timeout) {
+				//以timeout方式跳出for循环
+				break;
+			}
+			
+			do_job_active = 0;
+			timeout = 0;
+			
+			spin_unlock_irq(&p_cmd_threads->cmd_list_lock);
+			//把 schedule() 改为 schedule_timeout(1)，即超时1个jiffies
+			schedule(1);
+			timeout = 1;
+			spin_lock_irq(&p_cmd_threads->cmd_list_lock);
+		}
+		set_current_state(TASK_RUNNING);
+		remove_wait_queue(&p_cmd_threads->cmd_list_waitQ, &wait);
+	}
+
+	if (tm_dbg_is_release()) {
+		spin_unlock_irq(&p_cmd_threads->cmd_list_lock);
+		tm_dbg_check_released_cmds();
+		spin_lock_irq(&p_cmd_threads->cmd_list_lock);
+	}
+
+	if(do_job_active) {
+		scst_do_job_active(&p_cmd_threads->active_cmd_list,
+			&p_cmd_threads->cmd_list_lock, false);
+	} else if(timeout) {
+		//处理空闲超时情况
+		p_cmd_threads->handle_idle_timeout(p_cmd_threads->dh_priv);
+	}
+}
+spin_unlock_irq(&p_cmd_threads->cmd_list_lock);
+		
+		}}}
+
+	* void handle_idle_timeout(void* dh_priv)
+		* 定义于scst_vdisk.c中
+		* 如果 bio_pending->length > 0 就把bio_pending中的数据以normal方式发送，函数返回
+		* 否则 检查如果有已完成的bio，就调用handle_bio_complete()进行处理
+		
+=== 删除vdisk时释放资源 ===
+	* 在 vdev_destroy() 函数中执行 handle_destroy()
+{{{#!cplusplus
+static void handle_destroy(struct scst_vdisk_dev *virt_dev)
+{
+	//如果 bio_pending->length > 0 就把bio_pending中的数据以normal方式发送
+	
+	while(1) {
+		//如果bio_normal_list和bio_fsw_list都为空就 break
+		
+		//检查如果有已完成的bio，就调用handle_bio_complete()进行处理
+		
+		msleep(1);
+	}
+
+	// 此时一定有 virt_dev->n_bio_finish == virt_dev->n_bio_submit，因此不需要执行下面代码
+///    while (virt_dev->n_bio_finish != virt_dev->n_bio_submit) {
+///		msleep(1);
+///	}
+}
+}}}
+
+	* '''需要保证执行 handle_destroy() 时vdisk线程已经退出，否则handle_destroy()与vdisk线程存在访问冲突'''
+----
+== 测试 ==
+参考 [[iSCSI优化迭代过程5 ─ 测试]]
+----
+== 读取RAID信息 ==
+
+通过 mddev_t *mddev = q->queuedata （参考 drivers/md/raid5.c）可得到RAID信息
+
+	* 计算 virt_dev->full_stripe_size （根据磁盘数raid_disks和chunk_size计算）
+	* 只有 raid5 (level值为5) 才调用 blockio_exec_write，否则调用 blockio_exec_rw
+
+
+
+----
+[[Category-WisESP]]

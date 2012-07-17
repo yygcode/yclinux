@@ -1,0 +1,194 @@
+﻿.ProductParagraph
+{
+	margin: 0px;
+	padding-top: 10px;
+}
+
+.ProductSubHeading
+{
+	margin: 0px;
+	padding-top: 0px;
+	font-weight: bold;
+	color: #9b1e5c;	
+	font-size: 9pt;
+}
+
+.Specs
+{
+	color: #a22f68;
+	font-size: 12pt;
+	font-weight: bold;	
+}
+
+.ProductUl
+{
+	color: #4b395d;	
+}
+
+.ProductNavLink
+{
+	color: #a22f68;
+	padding: 6px 16px 6px 40px;	
+}
+
+.ProductNavLink a
+{
+	color: #a22f68 !important;
+	font-weight: bold;
+	text-decoration: none;
+}
+
+.ProductNavLink a:hover
+{
+	color: #6984b9 !important;
+	font-weight: bold;
+	text-decoration: underline;
+}
+
+.ProductNavSelectedLink
+{
+	color: #372a17;
+	padding: 6px 16px 6px 40px;
+	background-image: url(Images/General/Arrow_Selection1.gif);
+	background-repeat: no-repeat;
+	background-position: 18px 11px;
+}
+
+.ProductNavSelectedLink a
+{
+	color: #6984b9 !important;
+	font-weight: bold;
+	text-decoration: none;
+}
+
+.ProductNavSelectedLink a:hover
+{
+	color: #6984b9 !important;
+	text-decoration: underline;
+}
+
+.ProductTopCell1
+{
+	width: 183px;
+	padding: 0px 25px 5px 0px;
+	border-bottom: solid 1px #ececec;
+	vertical-align: top;	
+}
+
+.ProductTopCell2
+{
+	width: 183px;
+	padding: 0px 25px 5px 0px;
+	border-bottom: solid 1px #ececec;
+	vertical-align: top;	
+}
+
+.ProductTopCell3
+{
+	width: 183px;
+	padding: 0px 0px 5px 0px;
+	border-bottom: solid 1px #ececec;
+	vertical-align: top;	
+}
+
+.ProductHeader
+{
+	font-weight: bold;	
+}
+
+.ProductMidCell1
+{
+	width: 183px;
+	padding: 5px 25px 5px 0px;
+	border-bottom: solid 1px #ececec;
+	vertical-align: top;
+}
+
+.ProductMidCell2
+{
+	width: 183px;
+	padding: 5px 25px 5px 0px;
+	border-bottom: solid 1px #ececec;
+	vertical-align: top;
+}
+
+.ProductMidCell3
+{
+	width: 183px;
+	padding: 5px 0px 5px 0px;
+	border-bottom: solid 1px #ececec;
+	vertical-align: top;
+}
+
+.ProductBottomCell1
+{
+	width: 183px;
+	padding: 5px 25px 0px 0px;
+	vertical-align: top;
+}
+
+.ProductBottomCell2
+{
+	width: 183px;
+	padding: 5px 25px 0px 0px;
+	vertical-align: top;
+}
+
+.ProductBottomCell3
+{
+	width: 183px;
+	padding: 5px 0px 0px 0px;
+	vertical-align: top;
+}
+
+.NetworkNavHeader
+{
+	width: 135px;
+	height: 22px;
+	background-image: url(Images/Products/Network/network_box_top.jpg);
+	background-repeat: no-repeat;
+}
+
+.NetworkNavBody
+{
+	color: #4b395d;
+	width: 135px;
+	padding: 8px 0px 8px 0px;
+	background-image: url(Images/Products/Network/network_box_middle.jpg);
+	background-repeat: repeat-y;
+	text-align: left;
+}
+
+.NetworkNavFooter
+{
+	width: 135px;
+	height: 80px;
+	background-image: url(Images/Products/Network/network_box_footer.jpg);
+	background-repeat: no-repeat;
+}
+
+.StorageNavHeader
+{
+	width: 135px;
+	height: 22px;
+	background-image: url(Images/Products/Storage/storage_box_top.jpg);
+	background-repeat: no-repeat;
+}
+
+.StorageNavBody
+{
+	color: #4b395d;
+	width: 135px;
+	padding: 8px 0px 8px 0px;
+	background-image: url(Images/Products/Storage/storage_box_middle.jpg);
+	background-repeat: repeat-y;
+	text-align: left;
+}
+
+.StorageNavFooter
+{
+	width: 135px;
+	height: 80px;
+	background-image: url(Images/Products/Storage/storage_box_footer.jpg);
+	background-repeat: no-repeat;
+}

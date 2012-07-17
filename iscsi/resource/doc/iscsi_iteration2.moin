@@ -1,0 +1,83 @@
+# = iSCSI优化迭代过程2 =
+<<TableOfContents>>
+
+	* 时间 20100406 - 20100409
+	* SVN库版本号：
+
+	* 任务目标：
+		* 测试从网络写数据到ESP RAID5 裸设备的极限性能
+		* 测试数据拷贝对写性能的影响
+
+
+=== 测试从网络写数据到ESP RAID5 裸设备的极限性能 ===
+
+	* 测试配置1
+		* 4块盘RAID5，包大小192K，服务器端不回应答,顺序写入RAID5裸设备/dev/md1
+			* open 设备文件时，加入O_DIRECT选项
+				* write 函数的 buf 参数地址必须是 512 的整数倍，count 参数也必须是 512 的整数倍
+			
+			* ESP 的 RAID5 在4块盘时，写入块大小取 192K 的整数倍时速度较快
+				* (磁盘数量-1)*strip大小 = (4-1)*64K = 192K
+		
+			* iozone 测得速率为 '''85 MBps'''
+			{{{
+iozone -i 0 -r192k -s2000m -I -f /dev/md1
+			}}}
+		
+			* xdd 测得速率为 '''87 MBps'''
+			{{{
+xdd -op write -targets 1 /dev/md1 -dio -reqsize 192 -mbytes 2000 -passes 1 -verbose
+			}}}
+			
+			* 单线程速率是 '''50 MBps'''
+				* 源码是 tcp_send_server.cpp、tcp_send_client.cpp
+			
+			* 使用两个线程，一个线程从网络收数据，一个线程写数据到块设备
+				* 源码是 tcp_send_server_multithread.cpp、tcp_send_client.cpp
+				* 最多buffer数为2时的速率是 '''52.5 MBps'''
+				* 最多buffer数为3时的速率是 '''52.7 MBps'''
+				* 最多buffer数为10时的速率是 '''52.9 MBps'''
+				* 最多buffer数为100时的速率是 '''52.6 MBps'''
+	
+	* 测试配置2
+		* 4块盘RAID5，包大小192K，客户端每发一个包接收一个应答，顺序写入RAID5裸设备/dev/md1
+			* 速率是 '''??? MBps'''
+	
+	* 源码放入 svn/iscsi/src/trial 目录中
+		* 使用CMake工程构建系统编译
+
+=== 测试数据拷贝对写性能的影响 ===
+	* 测试配置
+		* 4块盘RAID5
+		* buffer大小192K
+		* 顺序写入RAID5裸设备/dev/md1
+			* open 设备文件时，加入O_DIRECT选项
+		* 配置1
+			* 使用两个线程，一个线程使用memcpy n 次得到新buffer的内容，一个线程写数据到块设备
+				* 每次memcpy的src要求不一样
+			* buffer列表中最多buffer数为3
+			* memcpy 0 次时(write相同的内容)的速率是 '''84.5 MBps'''
+			* memcpy 0 次时(write不同的内容)的速率是 '''78.1 MBps'''
+			* 以下测试copy不同的内容，write相同的内容
+			* memcpy 1 次时的速率是 '''68.2 MBps'''
+			* memcpy 2 次时的速率是 '''69.7 MBps'''
+			* memcpy 3 次时的速率是 '''63.8 MBps'''
+			* memcpy 4 次时的速率是 '''65 MBps'''
+			* memcpy 5 次时的速率是 '''61 MBps'''
+			* memcpy 6 次时的速率是 '''55.3 MBps'''
+			* memcpy 7 次时的速率是 '''53 MBps'''
+			* memcpy 8 次时的速率是 '''50 MBps'''
+			* memcpy 9 次时的速率是 '''47.8 MBps'''
+			* memcpy 10 次时的速率是 '''44.6 MBps'''
+			* 源码是 write_with_memcpy_perf.cpp
+		* 配置2
+			* 使用单线程，准备 n 个 不同地址的buffer
+			* 循环写这些buffer到块设备
+			* n 为1时的速率是 '''??? MBps'''
+			* n 为2时的速率是 '''??? MBps'''
+			* n 为3时的速率是 '''??? MBps'''
+			* n 为10时的速率是 '''??? MBps'''
+			* 源码是 write_with_diff_buf_perf.cpp
+		
+----
+[[Category-WisESP]]

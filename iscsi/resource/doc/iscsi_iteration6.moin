@@ -1,0 +1,74 @@
+# = iSCSI优化迭代过程6 =
+<<TableOfContents>>
+
+	* 时间 20100617 - 20100618
+	* SVN库版本号：386
+----
+== RAID5 ==
+	* void enable_stripe_align_write(struct block_device *bdev)
+		* 使能 stripe align write
+		* raid5模块默认状态为禁用 stripe align write
+		* 禁用 stripe align write时，RAID5的执行与原版RAID一致（不提前清空缓存）
+
+	* void disable_stripe_align_write(struct block_device *bdev)
+		* 禁用 stripe align write
+	
+	* int get_raid5_status(struct block_device *bdev)
+		* 获取当前raid状态
+		* RAID5_STATUS_NORMAL，正常
+		* RAID5_STATUS_DEGRADE，降级
+		* RAID5_STATUS_RECOVERY，重建
+		* RAID5_STATUS_RESYNC，初始化
+	
+	* stripe align write时调用bi_end_io()函数的error参数：
+		* RAID5状态正常且正确写入时，error参数 为0
+		* 其他情况 error 参数 不为0 （包括降级、重建、初始化等）
+----
+== SCST ==
+	* bio_info->complete的取值：
+		* BIO_UNFINISHIED，值为0，表示bio未完成
+		* BIO_SUCCESS，bio成功完成
+		* BIO_FAILED_FSW，FSW类型的bio失败
+		* BIO_FAILED_NORMAL，normal类型的bio失败
+	
+	* virt_dev里定义 int fsw_status，取值如下:
+		* FSW_DISABLE，完全禁止FSW（非RAID5情况下使用）
+		* FSW_PAUSE，暂停使用FSW（RAID5非正常情况下使用）
+		* FSW_ENABLE，允许使用FSW（RAID5正常情况下使用）
+	
+	* static void blockio_endio_write(struct bio *bio, int error) 的修改
+		* FSW类型的bio error参数不为0时, bio_info->complete = BIO_FAILED_FSW
+	
+	* void handle_bio_complete(bio_info_t* bio_info) 的修改
+		* 如果 bio_info->complete == BIO_FAILED_FSW，就:
+			* virt_dev->fsw_status = FSW_PAUSE;
+			* virt_dev->jiffies_fsw_pause = jiffies;
+		
+	* static int vdisk_do_job(struct scst_cmd *cmd) 的修改
+		* 当前设备非RAID5时，virt_dev->fsw_status的值应为FSW_DISABLE
+			
+		* 如果 virt_dev->fsw_status == FSW_PAUSE，就:
+			* 如果 jiffies - virt_dev->jiffies_fsw_pause > sec_to_jiffies(CHECK_FSW_STATUS_SECS) 就：
+				* virt_dev->jiffies_fsw_pause = jiffies;
+				* 调用get_raid5_status()获取RAID5状态，返回值为 RAID5_STATUS_NORMAL 时:
+					* virt_dev->fsw_status = FSW_ENABLE;重新使能FSW
+		
+		* 只有 virt_dev->fsw_status == FSW_ENABLE 时才调用 blockio_exec_write()，否则调用 blockio_exec_rw()
+----
+== 测试 ==
+	* op_test_a 的参数：
+		* min_offset 始终为0
+		* MAX_LEN 为 10M
+		* MAX_BUF 为 2M
+	
+	* 通过 scst 的打印信息确认 RAID5 正常状态下 SCST使用了 FSW，保持运行5分钟
+	* 拔盘后RAID降级，通过 scst 的打印信息确认不再使用FSW，保持运行5分钟
+	* 插入盘重建RAID，通过 scst 的打印信息确认重建完成前不使用FSW
+	* RAID重建完成后，通过 scst 的打印信息确认恢复使用FSW，保持运行15分钟
+	* 中止 op_test_a 程序， 使用dd测试速度应在 85MBps 以上。
+	
+	* 卸载 vdisk，此时会调用disable_stripe_align_write()
+	* 在ESP上用dd测试RAID速度，应达到正常速度
+	
+----
+[[Category-WisESP]]

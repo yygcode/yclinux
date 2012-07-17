@@ -1,0 +1,15 @@
+1、对linux-2.6.29.1(wisESP使用的内核)，并编译
+   ** 通用版: make
+   ** arm: make ARCH=arm CROSS_COMPILE=arm-angstrom-linux-gnueabi-
+ 	不能用link的形式，因为编译此内核依赖于本机系统
+
+2、下载scst源码
+   svn co https://scst.svn.sourceforge.net/svnroot/scst/trunk
+
+3、更改scst的一个bug
+   在文件 scst/scst/src/Makefile 取消注释
+   EXTRA_CFLAGS += -DCONFIG_SCST_STRICT_SERIALIZING
+
+4、编译(交叉编译环境中)
+   make ARCH=arm CROSS_COMPILE=arm-angstrom-linux-gnueabi- KDIR=/opt/linux-2.6.29.1 scst
+   make ARCH=arm CROSS_COMPILE=arm-angstrom-linux-gnueabi- CC=arm-angstrom-linux-gnueabi-gcc KDIR=/opt/linux-2.6.29.1 iscsi

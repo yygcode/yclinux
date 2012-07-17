@@ -1,0 +1,180 @@
+# = iSCSI优化迭代过程7 =
+<<TableOfContents>>
+
+	* 时间 20100621 - 20100630
+	* SVN库版本号：436
+----
+== 稳定性测试 ==
+	* 初始化并验证iscsi磁盘
+
+	* 测试参数
+	{{{
+./op_test -test /dev/sdx -compare /dev/shm/ramfile1 -percent 100 -test_size 100M -op_len 10M -test_nbr 1 -change_sec 60
+	}}}
+	含义：测试区间100M，每次写10M，写完后立即校验，校验后更改起始位置（仍在测试区间范围内），每60秒更改一次测试区间位置
+	
+
+	* samba mount
+	{{{
+mount -t smbfs -o codepage=cp936,username=zyf,password=123456,directio //192.168.192.192/zyf /mnt/a
+	}}}
+----
+== 断网死机问题复现方法 ==
+	* 问题状态：已解决
+	
+	* 运行硬件平台 WisESP
+		* 注：在qemu arm 虚拟机中也能够复现该问题
+		
+	* 在WisESP上运行的内核
+		* git库： `git@192.168.100.101:linux-2.6.29.1`
+		* 版本： 使用最新版本
+			* 注：其他内核版本，包括最新的2.6.34也能够复现该问题
+		* 配置文件：config-2.6.29.1.nas-fsw
+	
+	* 在WisESP上运行 SCST
+		* svn库: `http://192.168.100.101/svn/esp/trunk/iscsi/kernel/scst_a`
+		* 版本： 使用最新版本
+			* 注：其他SCST版本，包括官方最新的SCST以及官方 SCST 1.0 版本都能够复现该问题
+		* 编译方法
+		{{{
+./make.sh
+		}}}
+		
+		* 安装方法，例如安装到 192.168.100.191 的 WisESP系统上
+		{{{
+./sync_bin.sh root@192.168.100.191
+		}}}
+		
+		* 在WisESP上创建一个新的接口名称
+		{{{
+ifconfig eth0:91 192.168.100.91
+		}}}
+		注：直接拔网线也能够复现该问题，使用虚拟接口的原因是更便于运行 down_up_net_loop.sh 脚本
+		
+		* 在WisESP系统上运行SCST
+			* 生成 /etc/iscsi-scstd.conf 配置文件
+			{{{
+echo "Target iqn.2010-06.org.wisdata-iscsi:storage" > /etc/iscsi-scstd.conf
+			}}}
+			
+			* 运行 iscsi target 服务
+			{{{
+cd /opt/scst_a
+./reload_target_nullio.sh
+			}}}
+	
+	* 在 Linux 主机运行 open-iscsi
+		* open-iscsi 的编译
+			* 到官网 http://www.open-iscsi.org/ 下载最新版本
+			* make
+			* make install
+			
+		* open-iscsi 的使用参考 [[open-iscsi简易使用指南]]
+		
+		* 连接到 192.168.100.91（使用虚拟接口上的IP） 的iscsi target
+		{{{
+# 发现target
+iscsiadm -m discovery -t sendtargets -p 192.168.100.91
+
+# 登录
+iscsiadm -m node -T iqn.2010-06.org.wisdata-iscsi:storage -p 192.168.100.91 -l
+
+# 登出
+# iscsiadm -m node -T iqn.2010-06.org.wisdata-iscsi:storage -p 192.168.100.91 -u
+		}}}
+
+	* 在 Linux 主机运行测试程序
+		* SVN库： http://192.168.100.101/svn/esp/trunk/iscsi/scsi_test
+		* 版本： 使用最新版本
+		* 编译 op_test
+			* make
+		* 运行 op_test
+		{{{
+# 建立4个存放在内存的文件
+dd if=/dev/zero of=/dev/shm/ramfile1 bs=1M count=100
+dd if=/dev/zero of=/dev/shm/ramfile2 bs=1M count=100
+dd if=/dev/zero of=/dev/shm/ramfile3 bs=1M count=100
+dd if=/dev/zero of=/dev/shm/ramfile3 bs=1M count=100
+
+# 开启4个终端运行./op_test， /dev/sd[b-e] 是4块iscsi磁盘
+./op_test -test /dev/sdb -compare /dev/shm/ramfile1 -noverify
+./op_test -test /dev/sdc -compare /dev/shm/ramfile2 -noverify
+./op_test -test /dev/sdd -compare /dev/shm/ramfile3 -noverify
+./op_test -test /dev/sde -compare /dev/shm/ramfile4 -noverify
+		}}}
+	
+	* 在 WisESP 运行断网脚本
+		* SVN库：http://192.168.100.101/svn/esp/trunk/iscsi/scsi_test
+		* 版本： 使用最新版本
+		* 文件： down_up_net_loop.sh
+			* 把该文件复制到 WisESP 系统的 /usr/local/bin 目录
+			* 修改该文件的下列项
+			{{{
+eth_scst="eth0:91"
+ip_scst=192.168.100.91
+			}}}
+		* 运行：执行 down_up_net_loop.sh
+	
+	* 故障现象： down_up_net_loop.sh 运行 15秒 ~ 5分钟后，WisESP系统重启，串口没有内核出错打印信息
+----
+== 有时不能正常停止 iscsi-scstd 进程 ==
+
+主机运行op_test测试4块iscsi磁盘:
+{{{
+./op_test -test /dev/sdb -compare /dev/shm/ramfile1
+./op_test -test /dev/sdc -compare /dev/shm/ramfile2
+./op_test -test /dev/sdd -compare /dev/shm/ramfile3
+./op_test -test /dev/sde -compare /dev/shm/ramfile4
+}}}
+
+WisESP上运行停止并重启 iscsi-scstd 进程的测试命令：
+{{{
+while true;do killall iscsi-scstd; sleep 3; /usr/local/bin/scst/iscsi-scstd; sleep 10;done
+}}}
+
+正常停止 iscsi-scstd 进程时WisESP上内核打印的信息：
+{{{
+iscsi-scst: Releasing allocated resources
+scst: Aborting cmd e8c46be0 (tag 1342177346, op 28)
+scst: Target iqn.2010-06.org.wisdata-iscsi:storage for template iscsi unregistered successfully
+scst: Target iqn.2010-06.org.wisdata-iscsi:storage (rel ID 2) for template iscsi registered successfully
+scst: Using security group "Default_iqn.2010-06.org.wisdata-iscsi:storage" for initiator "iqn.2005-03.org.open-iscsi:28e4696fa7c"
+iscsi-scst: Negotiated parameters: InitialR2T No, ImmediateData Yes, MaxConnections 1, MaxRecvDataSegmentLength 2097152, MaxXmitDataSegmentL
+iscsi-scst:     MaxBurstLength 2097152, FirstBurstLength 262144, DefaultTime2Wait 2, DefaultTime2Retain 0,
+iscsi-scst:     MaxOutstandingR2T 1, DataPDUInOrder Yes, DataSequenceInOrder Yes, ErrorRecoveryLevel 0,
+iscsi-scst:     HeaderDigest None, DataDigest None, OFMarker No, IFMarker No, OFMarkInt 2048, IFMarkInt 2048
+iscsi-scst: Target parameters set for session 10000173d0200: QueuedCommands 32, Response timeout 30, Nop-In interval 30
+conn_setup_sock, setsockopt, TCP_NODELAY on, TCP_CORK off
+}}}
+此时/usr/local/bin/scst/iscsi-scstd重新加载成功，initiator重连成功。
+
+不能正常停止 iscsi-scstd 进程时内核打印的信息：
+{{{
+iscsi-scst: Releasing allocated resources
+scst: Aborting cmd e9cd3e40 (tag 3489661053, op 2a)
+scst: Aborting cmd e9c69000 (tag 3489661050, op 2a)
+scst: Aborting cmd e9c69130 (tag 3489661034, op 2a)
+scst: Aborting cmd e9c69260 (tag 3489660948, op 2a)
+scst: Aborting cmd e9c69390 (tag 3489660993, op 2a)
+scst: Aborting cmd e9c694c0 (tag 3489661002, op 2a)
+scst: Aborting cmd e9c695f0 (tag 3489660980, op 2a)
+scst: Aborting cmd e9c69720 (tag 3489660991, op 2a)
+scst: Aborting cmd e9c69850 (tag 3489660970, op 2a)
+scst: Aborting cmd e9c69980 (tag 3489660947, op 2a)
+scst: Aborting cmd e9c69ab0 (tag 3489660982, op 2a)
+iscsi-scst: ***WARNING***: Attempt to second open the control device!
+iscsi-scst: ***WARNING***: Attempt to second open the control device!
+iscsi-scst: ***WARNING***: Attempt to second open the control device!
+iscsi-scst: ***WARNING***: Attempt to second open the control device!
+iscsi-scst: ***WARNING***: Attempt to second open the control device!
+iscsi-scst: ***WARNING***: Attempt to second open the control device!
+}}}
+
+由于 killall iscsi-scstd 不能正常完成，相关资源未释放，因此后面重启 /usr/local/bin/scst/iscsi-scstd 时会打印:
+{{{
+iscsi-scst: ***WARNING***: Attempt to second open the control device!
+}}}
+此时initiator无法重连。
+
+----
+[[Category-WisESP]]

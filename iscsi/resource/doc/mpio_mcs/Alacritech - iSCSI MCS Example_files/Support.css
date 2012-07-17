@@ -1,0 +1,25 @@
+﻿.LinkListTable
+{
+	width: 100%;	
+}
+
+.LinkListTable tr
+{
+	vertical-align: top;
+
+}
+
+.LinkListTable td
+{
+	padding-bottom: 12px;
+}
+
+.LinkListTableDescription
+{
+	width: 40%;
+}
+
+.LinkListTable a
+{
+	font-weight: bold;	
+}

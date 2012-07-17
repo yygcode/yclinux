@@ -1,0 +1,762 @@
+# SCST源码阅读3：SCSI命令处理流程
+
+<<TableOfContents>>
+
+本文scst的代码来源于 https://scst.svn.sourceforge.net/svnroot/scst/trunk  r1685
+--------
+== process_read_io() => cmnd_rx_start() ==
+{{{#!cplusplus
+switch (cmnd_opcode(cmnd)) {
+	case ISCSI_OP_SCSI_CMD:
+	res = scsi_cmnd_start(cmnd);
+}}}
+	
+	* scsi_cmnd_start()
+{{{#!cplusplus
+req->scst_cmd = scst_cmd;
+......
+req->scst_state = ISCSI_CMD_STATE_RX_CMD;
+conn->rx_task = current;
+scst_cmd_init_stage1_done(scst_cmd, SCST_CONTEXT_DIRECT, 0);
+}}}
+	
+	* scst_cmd_init_stage1_done() => scst_cmd_init_done(cmd, pref_context)
+		* => scst_init_cmd()
+{{{#!cplusplus
+cmd->state = SCST_CMD_STATE_INIT;
+rc = scst_init_cmd(cmd, &pref_context);
+}}}
+			* => `__scst_init_cmd()`
+{{{#!cplusplus
+cmd->state = SCST_CMD_STATE_PRE_PARSE;
+}}}
+		
+		* => scst_process_active_cmd()
+{{{#!cplusplus
+switch (pref_context) {
+	case SCST_CONTEXT_TASKLET:
+	scst_schedule_tasklet(cmd);
+	break;
+
+	case SCST_CONTEXT_DIRECT:
+	scst_process_active_cmd(cmd, false);
+	break;
+}}}
+			* => scst_pre_parse()
+{{{#!cplusplus
+switch (cmd->state) {
+	case SCST_CMD_STATE_PRE_PARSE:
+	res = scst_pre_parse(cmd);
+}}}
+{{{#!cplusplus
+cmd->state = SCST_CMD_STATE_DEV_PARSE;
+}}}
+--------
+== process_read_io() => cmnd_rx_end() ==
+=> iscsi_push_cmnd() => iscsi_cmnd_exec()
+	* => iscsi_restart_cmnd()
+{{{#!cplusplus
+if (cmnd_opcode(cmnd) == ISCSI_OP_SCSI_CMD) {
+	if (cmnd->r2t_len_to_receive == 0)
+		iscsi_restart_cmnd(cmnd);
+	else if (cmnd->r2t_len_to_send != 0)
+		send_r2t(cmnd);
+	goto out;
+}
+}}}
+		* => scst_restart_cmd()
+{{{#!cplusplus
+status = SCST_PREPROCESS_STATUS_SUCCESS;
+
+cmnd->scst_state = ISCSI_CMD_STATE_RESTARTED;
+
+scst_restart_cmd(cmnd->scst_cmd, status, SCST_CONTEXT_THREAD);
+}}}
+{{{#!cplusplus
+	case SCST_PREPROCESS_STATUS_SUCCESS:
+	if (cmd->data_direction & SCST_DATA_WRITE)
+		cmd->state = SCST_CMD_STATE_RDY_TO_XFER;
+	else
+		cmd->state = SCST_CMD_STATE_TGT_PRE_EXEC;
+	
+......
+
+scst_process_redirect_cmd(cmd, pref_context, 1);
+}}}
+			* => scst_process_redirect_cmd()
+{{{#!cplusplus
+	case SCST_CONTEXT_THREAD:
+	if (check_retries)
+		scst_check_retries(tgt);
+	spin_lock_irqsave(&cmd->cmd_threads->cmd_list_lock, flags);
+	TRACE_DBG("Adding cmd %p to active cmd list", cmd);
+	if (unlikely(cmd->queue_type == SCST_CMD_QUEUE_HEAD_OF_QUEUE))
+		list_add(&cmd->cmd_list_entry,
+			&cmd->cmd_threads->active_cmd_list);
+	else
+		list_add_tail(&cmd->cmd_list_entry,
+			&cmd->cmd_threads->active_cmd_list);
+	wake_up(&cmd->cmd_threads->cmd_list_waitQ);
+	spin_unlock_irqrestore(&cmd->cmd_threads->cmd_list_lock, flags);
+	break;
+}}}
+	
+至此从网络收完一个命令包后，调用cmnd_rx_end()，一直到scst_process_redirect_cmd()，把命令加入了 active_cmd_list 队列，并唤醒命令处理线程 scst_cmd_thread()。
+--------
+== cmd->state 的状态转换 ==
+=== cmnd_rx_start()时所经历的状态 ===
+	* SCST_CMD_STATE_PRE_PARSE => scst_pre_parse()
+	* SCST_CMD_STATE_DEV_PARSE => scst_parse_cmd()
+	* SCST_CMD_STATE_PREPARE_SPACE => scst_prepare_space()
+	* SCST_CMD_STATE_PREPROCESSING_DONE => scst_preprocessing_done()
+	* SCST_CMD_STATE_PREPROCESSING_DONE_CALLED, res = SCST_CMD_STATE_RES_CONT_NEXT
+
+=== cmnd_rx_end()时所经历的状态 ===
+	* SCST_CMD_STATE_RDY_TO_XFER => scst_rdy_to_xfer()
+	* SCST_CMD_STATE_TGT_PRE_EXEC => scst_tgt_pre_exec()
+	* SCST_CMD_STATE_SEND_FOR_EXEC => scst_send_for_exec() => scst_exec()
+		* SCST_CMD_STATE_LOCAL_EXEC
+		* SCST_CMD_STATE_REAL_EXEC, scst_do_real_exec()
+	
+由 源码阅读2 可知，调用scst_do_real_exec()即会调用到submit_bio()
+
+=== bio操作完成后经历的状态 ===
+	* blockio_check_finish() => 
+	{{{#!cplusplus
+blockio_work->cmd->scst_cmd_done(blockio_work->cmd,
+			SCST_CMD_STATE_DEFAULT, scst_estimate_context());
+	}}}
+	cmd->scst_cmd_done在scst_exec()中被赋值为
+	{{{#!cplusplus
+cmd->scst_cmd_done = scst_cmd_done_local;
+	}}}
+		* scst_cmd_done_local()
+		{{{#!cplusplus
+if (next_state == SCST_CMD_STATE_DEFAULT)
+	next_state = SCST_CMD_STATE_PRE_DEV_DONE;
+		}}}
+	* SCST_CMD_STATE_PRE_DEV_DONE => scst_pre_dev_done()
+	* SCST_CMD_STATE_DEV_DONE => scst_dev_done()
+	* SCST_CMD_STATE_PRE_XMIT_RESP => scst_pre_xmit_response()
+	* SCST_CMD_STATE_XMIT_RESP => scst_xmit_response()
+	{{{#!cplusplus
+rc = tgtt->xmit_response(cmd);
+	}}}
+	* SCST_CMD_STATE_XMIT_WAIT, res = SCST_CMD_STATE_RES_CONT_NEXT
+
+=== cmnd_done(struct iscsi_cmnd *cmnd)之后的状态 ===
+{{{#!cplusplus
+if ((cmnd->scst_cmd != NULL) || (cmnd->scst_aen != NULL)) {
+	switch (cmnd->scst_state) {
+	case ISCSI_CMD_STATE_PROCESSED:
+		TRACE_DBG("cmd %p PROCESSED", cmnd);
+		scst_tgt_cmd_done(cmnd->scst_cmd,
+			SCST_CONTEXT_DIRECT_ATOMIC);
+		break;
+}}}
+
+	* scst_tgt_cmd_done() => SCST_CMD_STATE_FINISHED, scst_process_redirect_cmd() => scst_process_active_cmd()
+	* SCST_CMD_STATE_FINISHED => scst_finish_cmd() => `__scst_cmd_put(cmd)` => scst_release_space()
+	
+执行scst_release_space()之后，cmd->sg内存释放。
+--------
+== bio使用的内存 ==
+=== blockio_exec_rw() ===
+{{{#!cplusplus
+length = scst_get_buf_first(cmd, &address);
+
+addr = address;  => address
+
+struct page *page = virt_to_page(addr);  => addr
+
+rc = bio_add_page(bio, page, bytes, off);  => page
+}}}
+
+=== scst_get_buf_first() ===
+{{{#!cplusplus
+static inline int scst_get_buf_first(struct scst_cmd *cmd, uint8_t **buf)
+{
+	cmd->get_sg_buf_entry_num = 0;
+	cmd->may_need_dma_sync = 1;
+	return __scst_get_buf(cmd, cmd->sg, cmd->sg_cnt, buf);
+}
+
+/*
+ * Functions for access to the commands data (SG) buffer,
+ * including HIGHMEM environment. Should be used instead of direct
+ * access. Returns the mapped buffer length for success, 0 for EOD,
+ * negative error code otherwise.
+ *
+ * "Buf" argument returns the mapped buffer
+ *
+ * The "put" function unmaps the buffer.
+ */
+static inline int __scst_get_buf(struct scst_cmd *cmd, struct scatterlist *sg,
+	int sg_cnt, uint8_t **buf)
+{
+	int res = 0;
+	int i = cmd->get_sg_buf_entry_num;
+
+	*buf = NULL;
+
+	if ((i >= sg_cnt) || unlikely(sg == NULL))
+		goto out;
+
+	*buf = page_address(sg_page(&sg[i]));
+	*buf += sg[i].offset;
+
+	res = sg[i].length;
+	cmd->get_sg_buf_entry_num++;
+
+out:
+	return res;
+}
+}}}
+
+=== struct scst_cmd 中相关的数据结构 ===
+struct scst_cmd:
+{{{#!cplusplus
+	struct scatterlist *sg;		/* cmd data buffer SG vector */
+	int sg_cnt;			        /* SG segments count */
+
+	/* scst_get_sg_buf_[first,next]() support */
+	int get_sg_buf_entry_num;
+}}}
+
+使用了 struct scatterlist *sg来存放数据， 那么很可能要调用sg_set_page或sg_set_buf设置page地址。
+
+=== sg_set_page()被调用的路径 ===
+	* iscsi_init() （不相关）
+	* sgv_alloc_sys_pages() （不相关）
+		* scst_alloc()
+			* nop_out_start() => cmnd->sg = sg = scst_alloc （前文已有） （不相关）
+				* cmnd_rx_start()
+			* scst_set_lun_not_supported_request_sense()
+				* scst_set_cmd_error() （不相关）
+
+调用sg_set_page()的所有路径都与对块设备的bio操作不相关。
+
+=== sg_set_buf()被调用的路径 ===
+	* iscsi_init_status_rsp() （不相关）
+	* iscsi_scsi_aen() （不相关）
+	
+调用sg_set_buf()的所有路径都与对块设备的bio操作不相关。
+
+由于以上路径都不相关，因此仍没找到 sg 的来源。下面查找 “->sg =” 被调用的路径。
+
+=== “->sg =” 被调用的路径 ===
+	* scst_alloc_space()
+	{{{#!cplusplus
+cmd->sg = sgv_pool_alloc(tgt_dev->pool, cmd->bufflen, gfp_mask, flags,
+			&cmd->sg_cnt, &cmd->sgv, &cmd->dev->dev_mem_lim, NULL);
+	}}}
+		* scst_prepare_space()
+		
+	* scst_prepare_space()
+	{{{#!cplusplus
+cmd->sg = cmd->tgt_sg;
+cmd->sg_cnt = cmd->tgt_sg_cnt;
+cmd->in_sg = cmd->tgt_in_sg;
+cmd->in_sg_cnt = cmd->tgt_in_sg_cnt;
+	}}}
+路径里都有scst_prepare_space()，因此下面查找scst_prepare_space()被调用的路径。
+
+=== scst_prepare_space() 被调用的路径 ===
+<= scst_process_active_cmd()
+{{{#!cplusplus
+case SCST_CMD_STATE_PREPARE_SPACE:
+	res = scst_prepare_space(cmd);
+	break;
+}}}
+
+查找“= SCST_CMD_STATE_PREPARE_SPACE”。
+
+	* scst_parse_cmd()
+	{{{#!cplusplus
+	if (state == SCST_CMD_STATE_DEFAULT)
+		state = SCST_CMD_STATE_PREPARE_SPACE;
+} else
+	state = SCST_CMD_STATE_PREPARE_SPACE;
+	}}}
+		* scst_process_active_cmd()
+		{{{#!cplusplus
+case SCST_CMD_STATE_DEV_PARSE:
+	res = scst_parse_cmd(cmd);
+	break;
+		}}}
+			* scst_pre_parse()
+			{{{#!cplusplus
+cmd->state = SCST_CMD_STATE_DEV_PARSE;
+			}}}
+				* scst_process_active_cmd()
+				{{{#!cplusplus
+case SCST_CMD_STATE_PRE_PARSE:
+	res = scst_pre_parse(cmd);
+				}}}
+					* `__scst_init_cmd()`
+					{{{#!cplusplus
+cmd->state = SCST_CMD_STATE_PRE_PARSE;
+					}}}
+
+前面已经有调用到`__scst_init_cmd()`的路径：
+`__scst_init_cmd()` <= scst_init_cmd() <= scst_cmd_init_done() <= scst_cmd_init_stage1_done() <= scsi_cmnd_start() <= cmnd_rx_start() <= process_read_io()
+
+因此 scst_prepare_space() 函数是写块设备的内存相关数据结构 cmd->sg 得到赋值的地方。
+--------
+== 从网络接收数据使用的内存 ==
+process_read_io()
+{{{#!cplusplus
+case RX_DATA:
+	res = do_recv(conn);
+}}}
+
+=> do_recv()
+{{{#!cplusplus
+memset(&msg, 0, sizeof(msg));
+msg.msg_iov = conn->read_msg.msg_iov;
+msg.msg_iovlen = conn->read_msg.msg_iovlen;
+first_len = msg.msg_iov->iov_len;
+
+oldfs = get_fs();
+set_fs(get_ds());
+res = sock_recvmsg(conn->sock, &msg, conn->read_size,
+			MSG_DONTWAIT | MSG_NOSIGNAL);
+set_fs(oldfs);
+}}}
+
+与conn->read_msg.msg_iov相关。
+=== conn->read_msg.msg_iov的来由 ===
+	* cmnd_prepare_recv_pdu()
+	{{{#!cplusplus
+conn->read_msg.msg_iov = conn->read_iov;
+conn->read_size = size;
+	}}}
+		* cmnd_rx_continue()
+		{{{#!cplusplus
+if (req->pdu.datasize) {
+	res = cmnd_prepare_recv_pdu(conn, req, 0, req->pdu.datasize);
+	/* For performance better to send R2Ts ASAP */
+	if (likely(res == 0) && (req->r2t_len_to_send != 0))
+		send_r2t(req);
+}
+		}}}
+			* process_read_io()
+			{{{#!cplusplus
+case RX_CMD_CONTINUE:
+	if (cmnd->scst_state == ISCSI_CMD_STATE_RX_CMD) {
+		TRACE_DBG("cmnd %p is still in RX_CMD state",
+			cmnd);
+		res = 1;
+		break;
+	}
+	res = cmnd_rx_continue(cmnd);
+			}}}
+				* process_read_io()
+				{{{#!cplusplus
+case RX_CMD_START:
+	res = cmnd_rx_start(cmnd);
+	if (res == 0) {
+		if (cmnd->pdu.datasize == 0)
+			conn->read_state = RX_END;
+		else
+			conn->read_state = RX_DATA;
+	} else if (res > 0)
+		conn->read_state = RX_CMD_CONTINUE;
+				}}}
+				上面cmnd_rx_start(cmnd)的返回值一定是res>0的，因为：
+					* cmnd_rx_start() => scsi_cmnd_start()
+					{{{#!cplusplus
+	req->scst_state = ISCSI_CMD_STATE_RX_CMD;
+	conn->rx_task = current;
+	scst_cmd_init_stage1_done(scst_cmd, SCST_CONTEXT_DIRECT, 0);
+
+	///上面已经赋值 req->scst_state = ISCSI_CMD_STATE_RX_CMD，因此返回值res = 1
+	if (req->scst_state != ISCSI_CMD_STATE_RX_CMD)
+		res = cmnd_rx_continue(req);
+	else {
+		TRACE_DBG("Delaying req %p post processing (scst_state %d)",
+			req, req->scst_state);
+		res = 1;
+	}
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+					}}}
+	
+		* data_out_start()
+		{{{#!cplusplus
+res = cmnd_prepare_recv_pdu(conn, orig_req, offset, cmnd->pdu.datasize);
+		}}}
+			* cmnd_rx_start()
+		
+	* iscsi_conn_init_read()
+	{{{#!cplusplus
+static inline void iscsi_conn_init_read(struct iscsi_conn *conn,
+	void __user *data, size_t len)
+{
+	conn->read_iov[0].iov_base = data;
+	conn->read_iov[0].iov_len = len;
+	conn->read_msg.msg_iov = conn->read_iov;
+	conn->read_msg.msg_iovlen = 1;
+	conn->read_size = len;
+	return;
+}
+	}}}
+		* process_read_io()
+		{{{#!cplusplus
+switch (conn->read_state) {
+case RX_INIT_BHS:
+	EXTRACHECKS_BUG_ON(conn->read_cmnd != NULL);
+	cmnd = cmnd_alloc(conn, NULL);
+	conn->read_cmnd = cmnd;
+	iscsi_conn_init_read(cmnd->conn,
+		(void __force __user *)&cmnd->pdu.bhs,
+		sizeof(cmnd->pdu.bhs));
+
+......
+
+case RX_DATA:
+	res = do_recv(conn);
+	if (res == 0) {
+		int psz = ((cmnd->pdu.datasize + 3) & -4) - cmnd->pdu.datasize;
+		if (psz != 0) {
+			TRACE_DBG("padding %d bytes", psz);
+			iscsi_conn_init_read(conn,
+				(void __force __user *)&conn->rpadding, psz);
+			conn->read_state = RX_PADDING;
+
+......
+
+case RX_INIT_HDIGEST:
+	iscsi_conn_init_read(conn,
+		(void __force __user *)&cmnd->hdigest, sizeof(u32));
+	conn->read_state = RX_CHECK_HDIGEST;
+
+......
+
+case RX_INIT_DDIGEST:
+	iscsi_conn_init_read(conn,
+		(void __force __user *)&cmnd->ddigest,
+		sizeof(u32));
+	conn->read_state = RX_CHECK_DDIGEST;
+			
+		}}}
+
+由上可知：
+	* iscsi_conn_init_read()与bhs、padding、hdigest、ddigest的内存相关
+	* cmnd_prepare_recv_pdu()与DATA的内存相关
+		* conn->read_msg.msg_iov = conn->read_iov，因此内存来源于conn->read_iov
+
+=== conn->read_iov 的来由 ===
+iscsi_conn_alloc()
+{{{#!cplusplus
+conn->read_iov = (struct iovec *)get_zeroed_page(GFP_KERNEL);
+}}}
+
+{{{#!cplusplus
+
+/// offset 一般为0, data_out时有值
+/// size是数据段的长度（req->pdu.datasize）
+static int cmnd_prepare_recv_pdu(struct iscsi_conn *conn,
+	struct iscsi_cmnd *cmd,	u32 offset, u32 size)
+{
+	///cmd->sg在之前已经赋值了
+	struct scatterlist *sg = cmd->sg;
+	unsigned int bufflen = cmd->bufflen;
+	unsigned int idx, i, buff_offs;
+	int res = 0;
+
+	TRACE_ENTRY();
+
+	TRACE_DBG("cmd %p, sg %p, offset %u, size %u", cmd, cmd->sg,
+		offset, size);
+
+	iscsi_extracheck_is_rd_thread(conn);
+
+	buff_offs = offset;
+	idx = (offset + sg[0].offset) >> PAGE_SHIFT;
+	offset &= ~PAGE_MASK;
+
+	///给conn->read_msg.msg_iov赋值
+	conn->read_msg.msg_iov = conn->read_iov;
+	conn->read_size = size;
+
+	i = 0;
+	while (1) {
+		unsigned int sg_len;
+		char __user *addr;
+
+		if (unlikely(buff_offs >= bufflen)) {
+			TRACE_DBG("Residual overflow (cmd %p, buff_offs %d, "
+				"bufflen %d)", cmd, buff_offs, bufflen);
+			idx = 0;
+			sg = &dummy_sg;
+			offset = 0;
+		}
+
+		///得到sg[idx]中的 page地址+sg->offset （page_address(sg_page(sg)) + sg->offset）
+		addr = (char __force __user *)(sg_virt(&sg[idx]));
+		EXTRACHECKS_BUG_ON(addr == NULL);
+		sg_len = sg[idx].length - offset;
+
+		conn->read_iov[i].iov_base = addr + offset;
+
+		if (size <= sg_len) {
+			TRACE_DBG("idx=%d, offset=%u, size=%d, addr=%p",
+				idx, offset, size, addr);
+			conn->read_iov[i].iov_len = size;
+			conn->read_msg.msg_iovlen = i;
+			break;
+		}
+		conn->read_iov[i].iov_len = sg_len;
+
+		TRACE_DBG("idx=%d, offset=%u, size=%d, sg_len=%u, addr=%p",
+			idx, offset, size, sg_len, addr);
+
+		size -= sg_len;
+		buff_offs += sg_len;
+
+		i++;
+		
+		/// ISCSI_CONN_IOV_MAX 的值是 (PAGE_SIZE/sizeof(struct iovec))
+		/// conn->read_iov的内存只一页
+		if (unlikely(i >= ISCSI_CONN_IOV_MAX)) {
+			PRINT_ERROR("Initiator %s violated negotiated "
+				"parameters by sending too much data (size "
+				"left %d)", conn->session->initiator_name,
+				size);
+			mark_conn_closed(conn);
+			res = -EINVAL;
+			break;
+		}
+
+		idx++;
+		offset = 0;
+	}
+
+	TRACE_DBG("msg_iov=%p, msg_iovlen=%zd",
+		conn->read_msg.msg_iov, conn->read_msg.msg_iovlen);
+
+	TRACE_EXIT_RES(res);
+	return res;
+}
+}}}
+
+在函数 cmnd_prepare_recv_pdu() 中，从网络收数据的内存conn->read_iov和struct iscsi_cmnd.sg建立了联系。下面查找struct iscsi_cmnd.sg的来由。
+
+=== struct iscsi_cmnd.sg 的来由 ===
+cmnd_rx_continue()
+{{{#!cplusplus
+if (dir != SCST_DATA_BIDI) {
+	req->sg = scst_cmd_get_sg(scst_cmd);
+	req->sg_cnt = scst_cmd_get_sg_cnt(scst_cmd);
+	req->bufflen = scst_cmd_get_bufflen(scst_cmd);
+} else {
+	req->sg = scst_cmd_get_in_sg(scst_cmd);
+	req->sg_cnt = scst_cmd_get_in_sg_cnt(scst_cmd);
+	req->bufflen = scst_cmd_get_in_bufflen(scst_cmd);
+}
+}}}
+因此在调用到cmnd_rx_continue()时，scst_cmd->sg就已经赋值了。实际上，是在 process_read_io() => cmnd_rx_start() => => scsi_cmnd_start() => scst_rx_cmd() => scst_cmd_init_stage1_done() => scst_cmd_init_done() => scst_process_active_cmd()，初始化命令执行 scst_process_active_cmd() 函数中scst_cmd->sg得到赋值：
+
+scst_process_active_cmd()函数中，命令的状态转换在一个do循环中发生：
+{{{#!cplusplus
+do {
+	switch (cmd->state) {
+	case SCST_CMD_STATE_PRE_PARSE:
+		res = scst_pre_parse(cmd);
+		EXTRACHECKS_BUG_ON(res ==
+			SCST_CMD_STATE_RES_NEED_THREAD);
+		break;
+
+	case SCST_CMD_STATE_DEV_PARSE:
+		res = scst_parse_cmd(cmd);
+		break;
+
+	case SCST_CMD_STATE_PREPARE_SPACE:
+		res = scst_prepare_space(cmd);
+		break;
+
+	......
+	
+} while (res == SCST_CMD_STATE_RES_CONT_SAME);
+}}}
+
+	* 起初的状态是 SCST_CMD_STATE_PRE_PARSE，执行scst_pre_parse()，正常返回值SCST_CMD_STATE_RES_CONT_SAME
+	* 状态转换为 SCST_CMD_STATE_DEV_PARSE，执行scst_parse_cmd()，正常返回值SCST_CMD_STATE_RES_CONT_SAME
+	* 状态转换为 SCST_CMD_STATE_PREPARE_SPACE，执行 scst_prepare_space()，cmd->sg得到赋值
+
+'''至此，从网络收数据的内存conn->read_iov和写数据到块设备的内存cmd->sg建立了联系。'''
+--------
+== cmd->sg 内存的分配和释放 ==
+
+内存的分配是在 scst_prepare_space()函数中调用 scst_alloc_space() => sgv_pool_alloc()得到：
+{{{#!cplusplus
+int scst_alloc_space(struct scst_cmd *cmd)
+{
+	......
+
+	cmd->sg = sgv_pool_alloc(tgt_dev->pool, cmd->bufflen, gfp_mask, flags,
+			&cmd->sg_cnt, &cmd->sgv, &cmd->dev->dev_mem_lim, NULL);
+}}}
+cmd->bufflen是所需要的空间大小。
+
+上面已经有 内存释放函数 scst_release_space() 被调用的路径：
+cmnd_done(struct iscsi_cmnd *cmnd) => scst_tgt_cmd_done() => scst_process_redirect_cmd() => scst_process_active_cmd() => scst_finish_cmd() => `__scst_cmd_put(cmd)` => scst_release_space()
+
+如果target提供了内存分配，那么scst_release_space不负责释放内存：
+{{{#!cplusplus
+static void scst_release_space(struct scst_cmd *cmd)
+{
+	TRACE_ENTRY();
+
+	if (cmd->sgv == NULL) {
+		if ((cmd->sg != NULL) &&
+		    !(cmd->tgt_data_buf_alloced || cmd->dh_data_buf_alloced)) {
+			TRACE_MEM("Freeing sg %p for cmd %p (cnt %d)", cmd->sg,
+				cmd, cmd->sg_cnt);
+			scst_free(cmd->sg, cmd->sg_cnt);
+			goto out_zero;
+		} else
+			goto out;
+	}
+
+	if (cmd->tgt_data_buf_alloced || cmd->dh_data_buf_alloced) {
+		TRACE_MEM("%s", "*data_buf_alloced set, returning");
+		goto out;
+	}
+}}}
+--------
+== target自定义内存分配 ==
+struct scst_tgt_template 中的函数指针alloc_data_buf用于target自定义内存分配：
+{{{#!cplusplus
+	/*
+	 * This function allows target driver to handle data buffer
+	 * allocations on its own.
+	 *
+	 * Target driver doesn't have to always allocate buffer in this
+	 * function, but if it decide to do it, it must check that
+	 * scst_cmd_get_data_buff_alloced() returns 0, otherwise to avoid
+	 * double buffer allocation and memory leaks alloc_data_buf() shall
+	 * fail.
+	 *
+	 * Shall return 0 in case of success or < 0 (preferrably -ENOMEM)
+	 * in case of error, or > 0 if the regular SCST allocation should be
+	 * done. In case of returning successfully,
+	 * scst_cmd->tgt_data_buf_alloced will be set by SCST.
+	 *
+	 * It is possible that both target driver and dev handler request own
+	 * memory allocation. In this case, data will be memcpy() between
+	 * buffers, where necessary.
+	 *
+	 * If allocation in atomic context - cf. scst_cmd_atomic() - is not
+	 * desired or fails and consequently < 0 is returned, this function
+	 * will be re-called in thread context.
+	 *
+	 * Please note that the driver will have to handle itself all relevant
+	 * details such as scatterlist setup, highmem, freeing the allocated
+	 * memory, etc.
+	 *
+	 * OPTIONAL.
+	 */
+	int (*alloc_data_buf) (struct scst_cmd *cmd);
+
+}}}
+
+另，scst_release_space()只有在 scst_free_cmd() 中才被调用，并且在scst_free_cmd()中会调用scst_tgt_template的on_free_cmd()函数：
+{{{#!cplusplus
+void scst_free_cmd(struct scst_cmd *cmd)
+{
+	......
+
+	if ((cmd->tgtt->on_free_cmd != NULL) && likely(!cmd->internal)) {
+		TRACE_DBG("Calling target's on_free_cmd(%p)", cmd);
+		scst_set_cur_start(cmd);
+		cmd->tgtt->on_free_cmd(cmd);
+		scst_set_tgt_on_free_time(cmd);
+		TRACE_DBG("%s", "Target's on_free_cmd() returned");
+	}
+
+	if (likely(cmd->dev != NULL)) {
+		struct scst_dev_type *handler = cmd->dev->handler;
+		if (handler->on_free_cmd != NULL) {
+			TRACE_DBG("Calling dev handler %s on_free_cmd(%p)",
+				handler->name, cmd);
+			scst_set_cur_start(cmd);
+			handler->on_free_cmd(cmd);
+			scst_set_dev_on_free_time(cmd);
+			TRACE_DBG("Dev handler %s on_free_cmd() returned",
+				handler->name);
+		}
+	}
+
+	scst_release_space(cmd);
+}}}
+因此如果在target的 alloc_data_buf 中自定义了内存分配，可以在 on_free_cmd 中自定义内存释放。
+
+代码中的 handler 是 static struct scst_dev_type vdisk_blk_devtype，定义于scst_vdisk.c中。
+
+--------
+== 与写块设备相关的SCSI和iSCSI命令 ==
+{{{#!cplusplus
+static int vdisk_do_job(struct scst_cmd *cmd)
+{
+	......
+	
+	uint8_t *cdb = cmd->cdb;
+	int opcode = cdb[0];
+	
+	......
+	
+	switch (opcode) {
+	......
+	case WRITE_6:
+	case WRITE_10:
+	case WRITE_12:
+	case WRITE_16:
+		.....
+		if (virt_dev->blockio) {
+			blockio_exec_rw(cmd, thr, lba_start, 1);
+}}}
+
+=== cmd->cdb 的来由 ===
+process_read_io() => cmnd_rx_start() => scsi_cmnd_start()
+{{{#!cplusplus
+static int scsi_cmnd_start(struct iscsi_cmnd *req)
+{
+	......
+	struct iscsi_scsi_cmd_hdr *req_hdr = cmnd_hdr(req);
+	struct scst_cmd *scst_cmd;
+	
+	......
+	
+	scst_cmd = scst_rx_cmd(session->scst_sess,
+		(uint8_t *)&req_hdr->lun, sizeof(req_hdr->lun),
+		req_hdr->scb, sizeof(req_hdr->scb), SCST_NON_ATOMIC);
+}}}
+
+=> scst_rx_cmd()
+{{{#!cplusplus
+struct scst_cmd *scst_rx_cmd(struct scst_session *sess,
+			     const uint8_t *lun, int lun_len,
+			     const uint8_t *cdb, int cdb_len, int atomic)
+{
+	struct scst_cmd *cmd;
+	
+	......
+	
+	memcpy(cmd->cdb, cdb, cdb_len);
+	cmd->cdb_len = cdb_len;
+
+	......
+
+out:
+	TRACE_EXIT();
+	return cmd;
+}
+}}}
+
+----
+[[Category-iSCSI]]
