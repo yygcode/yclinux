@@ -1,0 +1,304 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+
+
+
+
+<title>Alacritech - iSCSI MCS Example</title><meta name="keywords" content="iSCSI,TNIC,TOE,TCP Offload,iSCSI HBA,Accelerator,Alacritec,Alacritech,PCI E,PCI X,Scalable Network Accelerators,Scalable Networking Pack,SNP,Qlogic,Broadcom,Adaptec,iStor,emBoot,Double-Take,Left Hand Networks,LeftHand Networks,Microsoft,NetApp,SEN2001XT,SEN2001XF,SEN2002XT,SEN2102ET, SEN2002XF,SEN2102EF,SEN2104ET,SEN2104EF,SES2001XT,SES2001XF,SES2002XT,SES2102ET,SES2002XF,SES2102EF,SES2104ET,SES2104EF,ASA 7211,ASA 7911">
+    <script type="text/javascript" language="javascript">i=11037</script>
+    <script type="text/javascript" language="javascript" src="Alacritech%20-%20iSCSI%20MCS%20Example_files/trackalyze.js"></script></head><body><img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/trackalyze.gif">
+<link href="Alacritech%20-%20iSCSI%20MCS%20Example_files/Company.css" type="text/css" rel="stylesheet"><link href="Alacritech%20-%20iSCSI%20MCS%20Example_files/Global.css" type="text/css" rel="stylesheet"><link href="Alacritech%20-%20iSCSI%20MCS%20Example_files/Legacy.css" type="text/css" rel="stylesheet"><link href="Alacritech%20-%20iSCSI%20MCS%20Example_files/Products.css" type="text/css" rel="stylesheet"><link href="Alacritech%20-%20iSCSI%20MCS%20Example_files/Sitemap.css" type="text/css" rel="stylesheet"><link href="Alacritech%20-%20iSCSI%20MCS%20Example_files/Support.css" type="text/css" rel="stylesheet">
+    <script type="text/javascript" src="Alacritech%20-%20iSCSI%20MCS%20Example_files/SiteSearch.js"></script>
+    <form method="post" action="iSCSIMCS.aspx" id="form1"><span><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div></span><span><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div><div style="position: absolute; z-index: -999; left: 0px; top: 0px;"></div></span>
+<div class="aspNetHidden">
+<input name="__EVENTTARGET" id="__EVENTTARGET" value="" type="hidden">
+<input name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="" type="hidden">
+<input name="__VIEWSTATE" id="__VIEWSTATE" value="/wEPDwULLTEwMDUyNjYzMjgPZBYCZg9kFgICAw9kFgICAQ8PFgQeDlNlbGVjdGVkTm9kZUlkBQJwMR4PRW5hYmxlVmlld1N0YXRlZ2RkZNP+L4m2YAW8R13jXoKuQ6pGpvf/TipmnFKkQNT8vVbJ" type="hidden">
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+var theForm = document.forms['form1'];
+if (!theForm) {
+    theForm = document.form1;
+}
+function __doPostBack(eventTarget, eventArgument) {
+    if (!theForm.onsubmit || (theForm.onsubmit() != false)) {
+        theForm.__EVENTTARGET.value = eventTarget;
+        theForm.__EVENTARGUMENT.value = eventArgument;
+        theForm.submit();
+    }
+}
+//]]>
+</script>
+
+
+    <div class="ContentBoundries">  
+        <div class="ContentOuter">
+            <table class="ContentTable" cellpadding="0" cellspacing="0">
+                <tbody><tr>
+                    <td colspan="3" valign="top">
+                        <div class="Header">
+                            <div class="NavigationMenu">
+                                <script src="Alacritech%20-%20iSCSI%20MCS%20Example_files/WebResource.axd" type="text/javascript"></script><script src="Alacritech%20-%20iSCSI%20MCS%20Example_files/WebResource_005.axd" type="text/javascript"></script><script src="Alacritech%20-%20iSCSI%20MCS%20Example_files/WebResource_006.axd" type="text/javascript"></script><script src="Alacritech%20-%20iSCSI%20MCS%20Example_files/WebResource_003.axd" type="text/javascript"></script><script src="Alacritech%20-%20iSCSI%20MCS%20Example_files/WebResource_004.axd" type="text/javascript"></script><script src="Alacritech%20-%20iSCSI%20MCS%20Example_files/WebResource_002.axd" type="text/javascript"></script><script type="text/javascript">
+//<![CDATA[
+/*** ComponentArt Web.UI client-side storage for NavigationMenu ***/
+window.ComponentArt_Storage_NavigationMenu=[['p0',-1,[],[[17,'/Default.aspx'],[30,'Home'],[33,'Alacritech Home'],[37,'HomeItemLook'],[39,'HomeSelectedItemLook']]],['p1',-1,[2,3,9,12,15,16],[[17,'/Support/'],[30,'Support'],[33,'Downloads, FAQs, Documentation, and More'],[37,'SupportItemLook'],[39,'SupportSelectedItemLook']]],['p2',1,[],[[17,'/Support/Overview.aspx'],[30,'Overview'],[33,'Support Overview']]],['p3',1,[4,5,6,7,8],[[17,'/Support/FAQs/Default.aspx'],[30,'Support FAQs'],[33,'Support FAQs'],[37,'MenuItemExpandableLook']]],['p4',3,[],[[17,'/Support/FAQs/EventLogMessages.aspx'],[30,'Event Log Messages'],[33,'Event Log Messages']]],['p5',3,[],[[17,'/Support/FAQs/iSCSI.aspx'],[30,'iSCSI FAQ'],[33,'iSCSI FAQ']]],['p6',3,[],[[17,'/Support/FAQs/Platform.aspx'],[30,'Platform FAQ'],[33,'Platform FAQ']]],['p7',3,[],[[17,'/Support/FAQs/ServerAccelerator.aspx'],[30,'Server Accelerator FAQ'],[33,'Server Accelerator FAQ']]],['p8',3,[],[[17,'/Support/FAQs/SupportAdvisories.aspx'],[30,'Support Advisories'],[33,'Support Advisories']]],['p9',1,[10,11],[[17,'/Support/Documents/Default.aspx'],[30,'Documents'],[33,'Support Documents'],[37,'MenuItemExpandableLook']]],['pA',9,[],[[17,'/Support/Documents/General.aspx'],[30,'General Documentation'],[33,'General Documentation']]],['pB',9,[],[[17,'/Support/Documents/ProductIdMap.aspx'],[30,'Hardware Documentation'],[33,'Product ID Map'],['ignore','false']]],['pC',1,[13,14],[[17,'/Support/Downloads/Default.aspx'],[30,'Downloads'],[33,'Support Downloads'],[37,'MenuItemExpandableLook']]],['pD',12,[],[[17,'/Support/Downloads/Drivers/Default.aspx'],[30,'Driver Downloads'],[33,'Driver Downloads']]],['pE',12,[],[[17,'/Support/Downloads/Tools/Default.aspx'],[30,'Support Tools'],[33,'Support Tools']]],['pF',1,[],[[17,'/Support/Returns.aspx'],[30,'Returns / RMAs'],[33,'Return Material Authorizations (RMAs), Product Returns']]],['p10',1,[],[[17,'/Utilities/ProductRegistration.aspx'],[30,'Product Registration'],[33,'Product Registration']]],['p11',-1,[18,19,20,21,22,23,24],[[17,'/Company'],[30,'Company'],[33,'Alacritech Company Information'],[37,'CompanyItemLook'],[39,'CompanySelectedItemLook']]],['p12',17,[],[[17,'/Company/Overview.aspx'],[30,'Overview'],[33,'Company Overview']]],['p13',17,[],[[17,'/Company/Management.aspx'],[30,'Management Team'],[33,'Management Team']]],['p14',17,[],[[17,'/Company/BoardOfDirectors.aspx'],[30,'Board of Directors'],[33,'Board of Directors']]],['p15',17,[],[[17,'/Company/Investors.aspx'],[30,'Investors'],[33,'Investors']]],['p16',17,[],[[17,'/Company/Contact.aspx'],[30,'Contact Us'],[33,'Contact Us']]],['p17',17,[],[[17,'/Company/Careers.aspx'],[30,'Careers'],[33,'Careers']]],['p18',17,[25,26],[[17,'/Company/Patents/Default.aspx'],[30,'Patents & Licensing'],[33,'Patents & Licensing'],[37,'MenuItemExpandableLook']]],['p19',24,[],[[17,'/Company/Patents/IPLicensing.aspx'],[30,'IP Licensing'],[33,'IP Licensing']]],['p1A',24,[],[[17,'/Company/Patents/HardwareLicensing.aspx'],[30,'Hardware Licensing'],[33,'Hardware Licensing']]]];
+window.ComponentArt_ItemLooks_NavigationMenu=[[0,'MenuItemLook',1,'MenuItem',2,'MenuItemHover',6,10,7,10],[0,'MenuItemExpandableLook',1,'MenuItem',2,'MenuItemHover',6,10,7,10,17,'arrow_expand_up.gif',18,'arrow_expand_over.gif'],[0,'HomeItemLook',1,'TopMenuItemHover',23,'home.jpg',24,'homeUp.jpg'],[0,'HomeSelectedItemLook',23,'homeUp.jpg'],[0,'ProductsItemLook',1,'TopMenuItemHover',23,'products.jpg',24,'productsUp.jpg'],[0,'ProductsSelectedItemLook',23,'productsUp.jpg'],[0,'SolutionsItemLook',1,'TopMenuItemHover',23,'solutions.jpg',24,'solutionsUp.jpg'],[0,'SolutionsSelectedItemLook',23,'solutionsUp.jpg'],[0,'ResourcesItemLook',1,'TopMenuItemHover',23,'resources.jpg',24,'resourcesUp.jpg'],[0,'ResourcesSelectedItemLook',23,'resourcesUp.jpg'],[0,'SupportItemLook',1,'TopMenuItemHover',23,'support.jpg',24,'supportUp.jpg'],[0,'SupportSelectedItemLook',23,'supportUp.jpg'],[0,'PartnersItemLook',1,'TopMenuItemHover',23,'partners.jpg',24,'partnersUp.jpg'],[0,'PartnersSelectedItemLook',23,'partnersUp.jpg'],[0,'CompanyItemLook',1,'TopMenuItemHover',23,'company.jpg',24,'companyUp.jpg'],[0,'CompanySelectedItemLook',23,'companyUp.jpg']];
+window.ComponentArt_ScrollLooks_NavigationMenu=[[0,'MenuItemLook'],[0,'MenuItemLook']];
+
+//]]>
+</script>
+<div id="NavigationMenu_div" style=""><table style="visibility: visible;" class="None" onmouseout="ComponentArt_Menu_Support.ComponentArt_Menu_GroupMouseOut(this,event)" onmouseover="ComponentArt_Menu_Support.ComponentArt_Menu_GroupMouseOver(this,event)" id="GNavigationMenu_-1" border="0" cellpadding="0" cellspacing="0"><tbody><tr><td onmousemove="return false" ondblclick="return false" onmouseover="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseOver(this,event)" onmouseout="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseOut(this,event)" onmousedown="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseDown(this)" onmouseup="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseUp(this)" onclick="ComponentArt_Menu_Support.ComponentArt_Menu_ItemClick(this)" title="Alacritech Home" id="NavigationMenu_0"><img alt="Alacritech Home" class="TopMenuItemHover" style="display: block;" src="Alacritech%20-%20iSCSI%20MCS%20Example_files/home.jpg" border="0"></td><td onmousemove="return false" ondblclick="return false" onmouseover="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseOver(this,event)" onmouseout="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseOut(this,event)" onmousedown="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseDown(this)" onmouseup="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseUp(this)" onclick="ComponentArt_Menu_Support.ComponentArt_Menu_ItemClick(this)" title="Downloads, FAQs, Documentation, and More" id="NavigationMenu_1"><img alt="Downloads, FAQs, Documentation, and More" style="display: block;" src="Alacritech%20-%20iSCSI%20MCS%20Example_files/supportUp.jpg" border="0"></td><td onmousemove="return false" ondblclick="return false" onmouseover="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseOver(this,event)" onmouseout="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseOut(this,event)" onmousedown="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseDown(this)" onmouseup="ComponentArt_Menu_Support.ComponentArt_Menu_ItemMouseUp(this)" onclick="ComponentArt_Menu_Support.ComponentArt_Menu_ItemClick(this)" title="Alacritech Company Information" id="NavigationMenu_17"><img alt="Alacritech Company Information" class="TopMenuItemHover" style="display: block;" src="Alacritech%20-%20iSCSI%20MCS%20Example_files/company.jpg" border="0"></td></tr></tbody></table></div><input id="NavigationMenu_Data" name="NavigationMenu_Data" type="hidden"><input id="NavigationMenu_Properties" name="NavigationMenu_Properties" type="hidden"><input id="NavigationMenu_ContextData" name="NavigationMenu_ContextData" type="hidden"><script type="text/javascript">
+//<![CDATA[
+if (!(window.cart_menu_documentmousedownhandled))
+{
+ComponentArt_AddEventHandler(document,'mousedown',new Function('event','ComponentArt_Menu_DocumentMouseDown(event)'));
+window.cart_menu_documentmousedownhandled = true;
+}
+//]]>
+</script>
+<script type="text/javascript">
+//<![CDATA[
+/*** ComponentArt_Menu_Startup_NavigationMenu ***/
+window.ComponentArt_Init_NavigationMenu = function() {
+if (!(window.cart_menu_kernel_loaded && window.cart_menu_support_loaded))
+{
+	setTimeout('ComponentArt_Init_NavigationMenu()', 500);
+	return;
+}
+window.NavigationMenu = new ComponentArt_Menu('NavigationMenu',ComponentArt_Storage_NavigationMenu,ComponentArt_ItemLooks_NavigationMenu,ComponentArt_ScrollLooks_NavigationMenu,null,false);
+NavigationMenu.PropertyStorageArray = [
+['ApplicationPath','/'],['AutoPostBackOnSelect',false],['BaseUrl',''],['CascadeCollapse',true],['ClientSideOnContextMenuHide',null],['ClientSideOnContextMenuShow',null],['ClientSideOnItemMouseOut',null],['ClientSideOnItemMouseOver',null],['ClientSideOnItemSelect',null],['ClientTemplates',[]],['CollapseDelay',500],['CollapseDuration',200],['CollapseSlide',2],['CollapseTransition',3],['CollapseTransitionCustomFilter',null],['ContextControlId',null],['ContextData',null],['ContextMenu',0],['ControlId','ctl00$NavigationMenu'],['CssClass','None'],['DefaultChildSelectedItemLookId',''],['DefaultDisabledItemLookId',''],['DefaultGroupCssClass','MenuGroup'],['DefaultGroupExpandDirection',0],['DefaultGroupExpandOffsetX',0],['DefaultGroupExpandOffsetY',0],['DefaultGroupHeight',null],['DefaultGroupItemSpacing',null],['DefaultGroupOrientation',0],['DefaultGroupWidth',null],['DefaultItemLookId','MenuItemLook'],['DefaultItemTextAlign',0],['DefaultItemTextWrap',false],['DefaultSelectedItemLookId',''],['DefaultTarget',''],['ExpandDelay',100],['ExpandDuration',200],['ExpandOnClick',false],['ExpandSlide',2],['ExpandTransition',3],['ExpandTransitionCustomFilter',null],['ForceHighlightedItemID',''],['Height',null],['HideSelectElements',cart_browser_hideselects && true],['HighlightExpandedPath',true],['ImagesBaseUrl','/App_Themes/Default/Images/Navigation/'],['MultiPageId',null],['Orientation',1],['OverlayWindowedElements',cart_browser_overlays && true],['PlaceHolderId','NavigationMenu_div'],['ScrollingEnabled',false],['SelectedItemPostBackID','p1'],['ShadowColor','#5E5E5E'],['ShadowEnabled',false],['ShadowOffset',2],['TopGroupExpandDirection',0],['TopGroupItemSpacing',null],['Width',null]
+];
+NavigationMenu.LoadProperties();
+ComponentArt_Menu_MarkSelectedItem(NavigationMenu);
+ComponentArt_Menu_MarkForceHighlightedItem(NavigationMenu);
+ComponentArt_ClientStateControls[ComponentArt_ClientStateControls.length] = NavigationMenu;
+ComponentArt_Menu_RenderMenu(NavigationMenu);
+ComponentArt_Menu_InitKeyboard(NavigationMenu);
+window.NavigationMenu_loaded = true;
+}
+ComponentArt_Init_NavigationMenu();
+//]]>
+</script>
+
+                            </div>
+                            <div class="Search">
+                                <input id="searchBox" name="searchBox" maxlength="512" class="SearchBox" onkeydown="return searchSubmit(this);" type="text">
+                                <a href="javascript:runSearch();"><img id="btnSearch" src="Alacritech%20-%20iSCSI%20MCS%20Example_files/SearchButton.gif" align="absmiddle"></a>
+                            </div>
+                            <a id="HomeHotSpot" href="http://www.alacritech.com/">
+                                <div class="LogoLink"><!-- --></div>
+                            </a>
+                        </div>  
+                    </td>
+                </tr>
+                <tr>
+                    <td class="ShadowColumnLeft" valign="top"><div class="ShadowOverlayLeft"><!-- --></div></td>
+                    <td class="TableInnerContent" valign="top">
+                        <div class="Content">
+                            <span id="SiteMapPath1"><a href="#SiteMapPath1_SkipLink"><img alt="Skip Navigation Links" src="Alacritech%20-%20iSCSI%20MCS%20Example_files/WebResource.gif" style="border-width: 0px;" height="0" width="0"></a><span><a title="Alacritech Home" class="BreadCrumbInactive" href="http://www.alacritech.com/Default.aspx">Home</a></span><span class="BreadCrumbInactive"> &gt; </span><span><a title="Downloads, FAQs, Documentation, and More" class="BreadCrumbInactive" href="http://www.alacritech.com/Support/">Support</a></span><span class="BreadCrumbInactive"> &gt; </span><span><a title="Support Documents" class="BreadCrumbInactive" href="http://www.alacritech.com/Support/Documents/Default.aspx">Documents</a></span><span class="BreadCrumbInactive"> &gt; </span><span class="BreadCrumbActive">iSCSI MCS</span><a id="SiteMapPath1_SkipLink"></a></span>
+                            
+
+<div class="InlineContent">
+<div class="InlineHeading2">iSCSI Multiple Connections Per Session (MCS) Example</div>
+<div class="Spacer1"><!-- spacer --></div>
+<div class="LegacyContent">
+<p>
+This is a example of how to create MCS connections to an iSCSI target in
+ a high performance environment.  By high performance, we mean that we 
+have an isolated VLAN for iSCSI traffic, and that <b>only</b> iSCSI 
+traffic will travel on the VLAN.  All non-essential protocols (netbios, 
+client for microsoft networks, etc.) have been unbound from our iSCSI 
+interfaces.  We will be connecting to a target that supports 
+active-active.
+</p><p>
+This document is provided as a convenience only.  If you have access to 
+the Microsoft iSCSI initiator Users Guide version 2.06 or later, you 
+should reference that document, as it has a much more thorough 
+treatement of this subject.  Furthermore, that document should be 
+regarded as authoritative if there are confilicts with these 
+intstructions, unless those conflicts are specific to the way Alacritech
+ products function.
+</p><p>
+Before starting you need to make sure that the target you plan to use 
+supports MCS, and that it supports active-active connections.  As of 
+this writing, MCS support is less common than MPIO support, but the 
+number of targets that support MCS is increasing.
+</p><p>
+In this example we will using two subnets (192.168.48.0/22 and 
+192.168.52.0/22).
+For those unfamiliar with netmask shorthand, /22 is the same as 
+255.255.252.0.  Using this mask means that addresses in the range 
+192.168.48.x, 192.168.49.x, 192.168.50.x, and 192.168.51.x are all on 
+the same subnet.  The same is true of 192.168.52-55.x.
+Unlike in a normal production environment there is no routing between 
+these two subnets, which means we will not be able to create 
+cross-subnet connections as one would normally desire to do in a high 
+availability environment.
+</p><p>
+Our target is a NetApp FAS 270 Filer with portal addresses of <kbd>192.168.51.201</kbd> and <kbd>192.168.55.201</kbd>.  The target has already had a volume set up, and has been configured so that our initiator host has access to it.
+</p><p>
+The inititator host is running Windows Server 2003 R2 SP2, and has the 
+Windows iSCSI initiator version 2.07, including MPIO, installed.  It has
+ an Alacritech SES2002XT dual port iSCSI Accelerator that we will be 
+using to connect to the target.  The iSCSI interfaces are configured 
+thusly:
+<br>&nbsp;<br>
+</p><center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_ipconfig.JPG">
+</center>
+<br>&nbsp;<br>
+After opening the iSCSI initiator applet, the first thing we do is add both portal addresses for the FAS270
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_portal.JPG">
+</center>
+<br>&nbsp;<br>
+Once the portal addresses have been entered, the available targets are displayed.  In this case, there is only one.
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_select.JPG">
+</center>
+<br>&nbsp;<br>
+We hightlight the target and click "Log On", this brings up the "Log on"
+ dialog.  Here we check the box for persistent connections, but <b>not</b> the one for Multi-Path.
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_logon1.JPG">
+</center>
+<br>&nbsp;<br>
+We then select "Advanced" so that we can configure the individual 
+connects.  Set "Local adapter" to "Microsoft iSCSI Initiator", and 
+select the IP address on the first iSCSI subnet as the Source IP.
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_logon1_src.JPG">
+</center>
+<br>&nbsp;<br>
+Next we select the destination address, choosing the target address that is on the same subnet as our source address.
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_logon1_dst.JPG">
+</center>
+<br>&nbsp;<br>
+After hitting "OK" a couple of times, we get back to the target window which now shows as "connected".
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_connected.JPG">
+</center>
+<br>&nbsp;<br>
+Now that our initial session is established, we highlight the target and
+ select "Details".  This brings up the "Target Properties" pane.  Note 
+that status is connected, and that the connection count is one.
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_session.JPG">
+</center>
+<br>&nbsp;<br>
+In order to add more connections to this session, we check the box 
+coresponding to the session and click the "Connections" button.  This 
+reveals the "Session Connections" pane, which gives more detail on our 
+connection.  It also shows that our load balance policy has defaulted to
+ "Round-Robin".  That's good, because that's what we want anyway.
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_session_conn.JPG">
+</center>
+<br>&nbsp;<br>
+Hit the "Add" button to bring up the "Add Connections" dialog.
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_session_conn_add.JPG">
+</center>
+<br>&nbsp;<br>
+As you might have guessed, we need to select the "Advanced" button to 
+setup the source and destination addresses for our second connection for
+ this session.  This time we use IP addresses from our other subnet.
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_session_conn_add_sd.JPG">
+</center>
+<br>&nbsp;<br>
+After clicking "OK", we're back at the "Session Connections" pane, only 
+now we show two connections for this session, one on each subnet.
+If this were a production environment and we could route between our two
+ subnets, we would likely add two more connections - 
+192.158.50.105-192.168.55.201 and 192.168.54.105-192.168.50.201 - for 
+maximum path redundancy.  Of course, then we'd have to idle the cross 
+connects as we only use them if one or more of "same subnet" connections
+ fails, since those connection would tend to have a lower performance 
+due to being routed.  If you want more information on this, please see 
+the Microsoft iSCSI Users Guide. 
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_session_2conn.JPG">
+</center>
+<br>&nbsp;<br>
+Another "OK", and we are back at the target properties window, which should now display a connection count of 2.
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_session_2conn_count.JPG">
+</center>
+<br>&nbsp;<br>
+Finally, after completely exiting the iSCSI initiator applet, we go back to the command prompt and run <kbd>netstat -rn</kbd>.  This shows our two connections on two subnets, and verifies that both connections are offloaded.
+<br>&nbsp;<br>
+<center>
+	<img src="Alacritech%20-%20iSCSI%20MCS%20Example_files/MCS_netstat.JPG">
+</center>
+<br>&nbsp;<br>
+
+
+</div>
+</div>
+
+
+                        </div>
+                    </td>
+                    <td class="ShadowColumnRight" valign="top"><div class="ShadowOverlayRight"><!-- --></div></td>
+                </tr>
+                <tr>
+                    <td colspan="3" valign="top">
+                        <div class="Footer">
+                            <div>
+                                <center>
+                                    <div class="FooterContent">
+                                        <table class="FooterLinksTable" cellpadding="0" cellspacing="0">
+                                            <tbody><tr>
+                                                <td valign="middle">
+                                                    <div class="FooterTextArea">
+                                                        <span id="FooterNavigation"><span class="FooterLinkArea"><a title="Alacritech Home" href="http://www.alacritech.com/Default.aspx">Home</a></span><span class="FooterSpacer">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="FooterLinkArea"><a title="Downloads, FAQs, Documentation, and More" href="http://www.alacritech.com/Support/">Support</a></span><span class="FooterSpacer">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="FooterLinkArea"><a title="Alacritech Company Information" href="http://www.alacritech.com/Company">Company</a></span></span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody></table>
+                                    </div>
+                                </center>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="3" valign="top">
+                        <div class="subFooter">
+                            <span><a id="HyperLink3" href="http://www.alacritech.com/Sitemap.aspx">Site Map</a></span>
+                            <span style="padding: 0px 20px;"><a id="HyperLink2" href="http://www.alacritech.com/PrivacyStatement.aspx">Privacy Statement</a></span>
+                            <span><a id="HyperLink1" href="http://www.alacritech.com/Copyright.aspx">Copyright</a></span>
+                        </div>    
+                    </td>
+                </tr>
+            </tbody></table>
+        </div>
+    </div>
+    </form>
+    
+    <!-- Use for site search -->
+    <script type="text/javascript">
+    <!--
+        createSearchForm();
+    // -->
+    </script><div>                             <form id="searchbox_005620973236873065961:4tpcvqmujhs" action="http://www.alacritech.com/SearchResults.aspx">                             <input id="searchInput" name="q" type="hidden">                             <input name="cx" value="005620973236873065961:4tpcvqmujhs" type="hidden">                             <input name="cof" value="FORID:11" type="hidden">                             </form>                         </div>
+    
+</body></html>

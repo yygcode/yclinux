@@ -1,0 +1,62 @@
+一、配置一个lun、SCST的基本操作
+1、必须有配置文件Target
+  /etc/iscsi-scstd.conf
+	echo "Target iqn.2010-03.org.open-iscsi:1cbd4b9e4ad:storage" >/etc/iscsi-scstd.conf
+--------------
+2、服务启动 start daemon，需要mod scst、scst_vdisk、iscsi-scst
+  insmod scst.ko
+  insmod scst_vdisk.ko
+  insmod iscsi-scst.ko
+  iscsi-scstd
+
+--------------
+find -type f -name "trace_level" | while read line;do echo none > $line;done
+--------------
+3 **** working with VDISK BLOCKIO mode
+  echo "open vdisk0 /dev/md1p1 BLOCKIO" > /proc/scsi_tgt/vdisk/vdisk
+  echo "add vdisk0 0" >/proc/scsi_tgt/groups/Default/devices
+  
+  echo "del vdisk0 0" >/proc/scsi_tgt/groups/Default/devices
+  echo "close vdisk0 /dev/md1p1" > /proc/scsi_tgt/vdisk/vdisk
+  (mount过的设备仍然可以作为Target)
+  
+  **** working with VDISK FILEIO mode
+  echo "open vdisk0 /dev/md1p1" > /proc/scsi_tgt/vdisk/vdisk
+
+  **** echo "add 5:0:0:8 0" >/proc/scsi_tgt/groups/Default/devices
+
+  **** Create a group for the target:
+  echo "add_group Default_iqn.2007-05.com.example:storage.iscsi-scst-1">/proc/scsi_tgt/scsi_tgt
+
+4 stop daemon
+  kill pid_iscsi-scstd
+  rmmod scst_vdisk
+  rmmod iscsi-scst
+  rmmod scst
+
+5、虚拟设备
+  dd if=/dev/zero of=/mnt/disk1 bs=1024 count=512
+  echo "open vm_disk /mnt/disk1" > /proc/scsi_tgt/vdisk/vdisk
+  echo "add vm_disk 1" >/proc/scsi_tgt/groups/Default/devices
+
+二、动态地（不需要重启iscsi-scstd）增加、删除target
+
+三、动态地往一个target增加删除LUN
+
+四、查看当前正在运行的每一个target中的session (与initiator的连接），session中的信息至少包含target名称、initiator的名称和IP
+
+/proc/scsi_tgt# cat iscsi/session
+tid:1 name:iqn.2005-03.org.open-iscsi:1cbd4b9e4ad:storage
+        sid:1000037010040 initiator:iqn.1991-05.com.microsoft:wisdata-332 (reinstating no)
+                cid:1 ip:192.168.100.32 state:established idle  hd:none dd:none
+        sid:2000037010040 initiator:iqn.dell2 (reinstating no)
+                cid:1 ip:192.168.100.181 state:established idle  hd:none dd:none
+
+
+五、查看当前正在运行的每一个target中的LUN
+
+六、查看当前正在运行的 target。当前正在运行的target与配置文件/etc/iscsi-scstd.conf不一定完全一致，因为在iscsi-scstd运行后可以动态地增加或删除运行的target 
+
+
+ 
+ 

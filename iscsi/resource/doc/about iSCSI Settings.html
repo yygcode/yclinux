@@ -1,0 +1,245 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en"><head>
+
+
+	<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+	<meta name="keywords" content="Where Can I learn about iSCSI Settings?,
+ Open-E,forum,Open-E DSS V6, Open-E DSS V6 Lite, Open-E DSS, Open-E 
+iSCSI, Open-E NAS, NAS-XSR, Free Trail, Data Storage Software">
+	<meta name="description" content="[Archive] Where Can I learn about 
+iSCSI Settings? Open-E iSCSI">
+		<title>Where Can I learn about iSCSI Settings? [Archive]  - Open-E 
+forums</title>
+	<link rel="stylesheet" 
+href="Where%20Can%20I%20learn%20about%20iSCSI%20Settings%3F_files/archive.css">
+</head><body>
+<div class="pagebody">
+<div id="navbar"><a href="http://forum.open-e.com/archive/index.php/">Open-E
+ forums</a> &gt; <a 
+href="http://forum.open-e.com/archive/index.php/f-14.html">Open-E iSCSI</a>
+ &gt; <a href="http://forum.open-e.com/archive/index.php/f-17.html">Open-E
+ iSCSI</a> &gt; Where Can I learn about iSCSI Settings?</div>
+<hr>
+<div class="pda"><a 
+href="http://forum.open-e.com/archive/index.php/t-343.html?pda=1" 
+rel="nofollow">PDA</a></div>
+<p class="largefont">View Full Version : <a 
+href="http://forum.open-e.com/showthread.php?t=343">Where Can I learn 
+about iSCSI Settings?</a></p>
+<hr>
+
+<div class="post"><div class="posttop"><div class="username">Crosscreek</div><div
+ class="date">02-13-2007, 08:37 AM</div></div><div class="posttext">I'm 
+trying to optimize my SAN.  I just switched to using Jumbo Frames.  My 
+read speed has gone up drastically, but my write speed has gotten a lot 
+worse.<br>
+<br>
+It's very hard because I don't know how to tune it.  The default 
+settings on my initiator (Atto XtendSAN) are completely different than 
+the Open-E iSCSI Enterprise's default settings.<br>
+<br>
+What does Data Digest mean?  Max Headers?  MaxBurstLenght?  Immediate 
+Data?  Is there a link to a website or a book or something I can read up
+ and understand what this stuff means?<br>
+<br>
+The target disks are formatted HFS+, all the clients are OS X, and I'm 
+using a SAN program called MetaSAN.  All this prevents me from using 
+IOmeter, making it even harder.<br>
+<br>
+Or could someone make a recommendation?<br>
+<br>
+The target volumes are RAID 5 w/ 256k block size.<br>
+<br>
+There are 4 client machines, and the target has a four-port 1gb nic.  
+Everything is set to Jumbo Frames 9000 MTU.  No bonding or anything like
+ that yet.<br>
+<br>
+The application is video editing.  Any suggestions?  Thanks.</div></div><hr>
+
+
+<div class="post"><div class="posttop"><div class="username">To-M</div><div
+ class="date">02-13-2007, 04:36 PM</div></div><div class="posttext">Have
+ you tested without the Jumbo frames, some switches if not set correctly
+ and the host end not matching can cause some issues. Test without Jumbo
+ frames and with 802.3ad (set the switch as well). Does the RAID 
+controller have the ability to in-crease Cache write values this can 
+help with large file writes. Having a difference in settings of iSCSI 
+target and Initiator can cause issues, set them the same using the 
+default settings from our console located by going to ctrl. + alt. + w 
+select tuning options and iSCSI daemon options (please be careful when 
+experimenting with this as this has already been set properly with our 
+certified initiators). Also check host systems NIC&#8217;s that could be 
+causing the slow writes with overhead CPU usage as your reads are fine 
+coming from the server. We certified on our website to use the MAC ATTO 
+iSCSI Mac Initiator--Xtend SAN. Below is the link.<br>
+<br>
+http://www.open-e.com/data_storage_solution/server/service_and_support.php?lang=it&amp;showInvisible=1&amp;subserv=prodcomp&amp;hardkind=iSCSI%20initiator&amp;manufact=Software<br>
+<br>
+Allot of information is located on the net for the iSCSI settings and 
+there meaning, below is a simple explanation, please review.  <br>
+<br>
+http://www.die.net/doc/linux/man/man5/iscsi.conf.5.html</div></div><hr>
+
+
+<div class="post"><div class="posttop"><div class="username">Crosscreek</div><div
+ class="date">02-13-2007, 07:30 PM</div></div><div class="posttext">Yes,
+ I've been using it without Jumbo Frames for almost a year.  I get about
+ 75MB/s up and down.  It's pretty good, but I need to improve it.  Also,
+ there are some latency issues.  I sometimes get "dropped frames" when 
+capturing video to it.  Everyone I've spoken to says the Jumbo Frames is
+ a must for this type of application.  My switch and all components are 
+set to use Jumbo Frames.<br>
+<br>
+The disks are nowhere even close to being a bottleneck.  It's a 3ware 
+controller, 256kb block size with write cache enabled.  And as I said, 
+the write speed only goes down a lot when Jumbo Frames are enabled.<br>
+<br>
+The default settings on Atto XtendSAN v2.0 have all burst lenghts's very
+ high compared to the Open-E's default settings (1048576).  The Open-E 
+settings seem to override them anyways.  <br>
+<br>
+Thanks for posting that link, but it's really just a description of what
+ the code lines are to configure it.  It doesn't explain what things 
+like InitialR2T and ImmediateData mean.</div></div><hr>
+
+
+<div class="post"><div class="posttop"><div class="username">To-M</div><div
+ class="date">02-13-2007, 08:21 PM</div></div><div class="posttext">Try 
+to test the system and review the results using this system status for 
+CPU, Memory...<br>
+https://x.x.x.x/check_sys/127.0.0.1.html  on the iSCSI server (has this 
+been updated to Version 172 Build 2512) .  Check to see if all firmwares
+ have been updated. Some testing on all levels will need to be 
+performed.  Again, on the internet there are many areas that talk about 
+these subjects from your inquires of what do they mean " InitialR2T and 
+ImmediateData" .<br>
+<br>
+InitialR2T<br>
+<br>
+The InitialR2T key is used to turn off the default use of R2T for<br>
+   unidirectional and the output part of bidirectional commands, thus<br>
+   allowing an initiator to start sending data to a target as if it has<br>
+   received an initial R2T with Buffer Offset=Immediate Data Length and<br>
+   Desired Data Transfer Length=(min(FirstBurstLength, Expected Data<br>
+   Transfer Length) - Received Immediate Data Length).<br>
+<br>
+   The default action is that R2T is required, unless both the initiator<br>
+   and the target send this key-pair attribute specifying InitialR2T=No.<br>
+   Only the first outgoing data burst (immediate data and/or separate<br>
+   PDUs) can be sent unsolicited (i.e., not requiring an explicit R2T).<br>
+<br>
+ImmediateData<br>
+<br>
+The initiator and target negotiate support for immediate data.  To<br>
+   turn immediate data off, the initiator or target must state its<br>
+   desire to do so.  ImmediateData can be turned on if both the<br>
+   initiator and target have ImmediateData=Yes.<br>
+<br>
+   If ImmediateData is set to Yes and InitialR2T is set to Yes<br>
+   (default), then only immediate data are accepted in the first burst.<br>
+<br>
+   If ImmediateData is set to No and InitialR2T is set to Yes, then the<br>
+   initiator MUST NOT send unsolicited data and the target MUST reject<br>
+   unsolicited data with the corresponding response code.<br>
+<br>
+   If ImmediateData is set to No and InitialR2T is set to No, then the<br>
+   initiator MUST NOT send unsolicited immediate data, but MAY send one<br>
+   unsolicited burst of Data-Out PDUs.<br>
+<br>
+   If ImmediateData is set to Yes and InitialR2T is set to No, then the<br>
+   initiator MAY send unsolicited immediate data and/or one unsolicited<br>
+   burst of Data-Out PDUs.<br>
+<br>
+MaxRecvDataSegmentLength<br>
+<br>
+The initiator or target declares the maximum data segment length in<br>
+   bytes it can receive in an iSCSI PDU.<br>
+<br>
+   The transmitter (initiator or target) is required to send PDUs with a<br>
+   data segment that does not exceed MaxRecvDataSegmentLength of the<br>
+   receiver.<br>
+<br>
+   A target receiver is additionally limited by MaxBurstLength for<br>
+   solicited data and FirstBurstLength for unsolicited data.  An<br>
+   initiator MUST NOT send solicited PDUs exceeding MaxBurstLength nor<br>
+   unsolicited PDUs exceeding FirstBurstLength (or<br>
+   FirstBurstLength-Immediate Data Length if immediate data were sent).<br>
+<br>
+MaxBurstLength<br>
+<br>
+The initiator and target negotiate maximum SCSI data payload in bytes<br>
+   in a Data-In or a solicited Data-Out iSCSI sequence.  A sequence<br>
+   consists of one or more consecutive Data-In or Data-Out PDUs that end<br>
+   with a Data-In or Data-Out PDU with the F bit set to one.<br>
+<br>
+FirstBurstLength<br>
+<br>
+The initiator and target negotiate the maximum amount in bytes of<br>
+   unsolicited data an iSCSI initiator may send to the target during the<br>
+   execution of a single SCSI command.  This covers the immediate data<br>
+   (if any) and the sequence of unsolicited Data-Out PDUs (if any) that<br>
+   follow the command.<br>
+<br>
+   FirstBurstLength MUST NOT exceed MaxBurstLength.<br>
+<br>
+DefaultTime2Wait<br>
+<br>
+The initiator and target negotiate the minimum time, in seconds, to<br>
+   wait before attempting an explicit/implicit logout or an active task<br>
+   reassignment after an unexpected connection termination or a<br>
+   connection reset.<br>
+<br>
+   A value of 0 indicates that logout or active task reassignment can be<br>
+   attempted immediately.</div></div><hr>
+
+
+<div class="post"><div class="posttop"><div class="username">Crosscreek</div><div
+ class="date">02-14-2007, 02:52 AM</div></div><div class="posttext">Thanks
+ Tom!  That was very helpful.</div></div><hr>
+
+
+<div class="post"><div class="posttop"><div class="username">Crosscreek</div><div
+ class="date">02-14-2007, 10:23 PM</div></div><div class="posttext">I 
+mean Todd ;)</div></div><hr>
+
+
+<div class="post"><div class="posttop"><div class="username">Crosscreek</div><div
+ class="date">02-16-2007, 05:31 AM</div></div><div class="posttext">Todd,<br>
+<br>
+Thanks for the detailed post, and I also found some other websites with 
+good info.  Unfortunately it's a bit over my head.  I'm just don't 
+understand the discrepancies between the default settings on Open-E and 
+the initiators' default settings.<br>
+<br>
+Open-E has R2T on by default, and ImmediateData off.  Both Atto and MS 
+initiators have the opposite by default.<br>
+<br>
+Open-E default max data segment length (send and receive) is 8k.  MS 
+default receive is 512k and Atto is 1M.<br>
+<br>
+Open-E default first burst length is 65k.  MS is 512k, Atto is 1M.<br>
+<br>
+Open-E default max burst length is 256k.  Again, MS is 512k and Atto is 
+1M.<br>
+<br>
+Sorry, forgive my ignorance.  I'm just confused by the whole thing.</div></div><hr>
+
+
+<div class="post"><div class="posttop"><div class="username">To-M</div><div
+ class="date">02-16-2007, 02:32 PM</div></div><div class="posttext">Our 
+engineers decided these where the best tested default settings from many
+ tests. Additionaly alowing you to adjust some of the perameters in our 
+daemon acordingly to be matched with the approved initiatotoers. Many 
+adjustemnst can be made as you are experincing just as long as you keep 
+them the same on both sides. Many other manufactures have different 
+settings as well. I use this site below to perform many different test 
+and this might help in your research for your environment as no two 
+environments are usually the same.<br>
+<br>
+http://www.zvon.org/tmRFC/RFC3720/Output/chapter12.html</div></div><hr>
+
+
+<div id="copyright">vBulletin v3.5.2, Copyright ©2000-2010, Jelsoft 
+Enterprises Ltd.</div>
+</div>
+</body></html>

@@ -1,0 +1,145 @@
+#!/bin/sh -x
+#
+# rc.local
+#
+# This script is executed at the end of each multiuser runlevel.
+# Make sure that the script will "exit 0" on success or any other
+# value on error.
+#
+# In order to enable or disable this script just change the execution
+# bits.
+#
+# By default this script does nothing.
+#exit
+
+# rc.local is not executing on boot
+# The main problem with rc.local is "concurrency" , it often runs too soon (in an effort to speed up boot times).
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games
+
+sleep 10
+modprobe libcrc32c
+modprobe crc32c
+modprobe -r bnx2
+modprobe bnx2
+sleep 3
+
+echo 0 > /proc/sys/vm/mmap_min_addr
+
+if [ $(ls -l /dev/pts/ | wc -l) -lt 2 ];then
+	mount -t devpts devpts /dev/pts
+fi
+
+if lspci | egrep "VGA.*VMware" >/dev/null;then
+	eth=eth5
+else
+	eth=eth0
+	#/etc/init.d/acpi-support start
+fi
+
+ip_2=192.168.100.182
+ip_6=192.168.100.186
+
+ifconfig $eth 192.168.100.118
+ifconfig $eth:2 $ip_2
+ifconfig $eth:6 $ip_6
+ifconfig eth0:11 192.168.11.118
+
+ifconfig eth1 192.168.191.182
+ifconfig eth2 192.168.192.182
+ifconfig eth3 192.168.193.182
+
+#ifconfig eth0:191 192.168.100.191
+#ifconfig eth0:192 192.168.100.192
+#ifconfig eth0:193 192.168.100.193
+
+#/usr/local/bin/nat.sh || true
+service ssh restart
+#/etc/init.d/ssh restart
+
+mount /dev/sda7 /media/sda7
+mount /dev/sda6 /media/sda7/media/sda6
+mount -o bind /media/sda7/nfs /nfs
+
+cat >/media/sda7/etc/mtab<<EOF
+/dev/sda7 / ext3 rw 0 0
+proc /proc proc rw,noexec,nosuid,nodev 0 0
+none /sys sysfs rw,noexec,nosuid,nodev 0 0
+none /sys/fs/fuse/connections fusectl rw 0 0
+none /sys/kernel/debug debugfs rw 0 0
+none /sys/kernel/security securityfs rw 0 0
+none /dev devtmpfs rw,mode=0755 0 0
+none /dev/pts devpts rw,noexec,nosuid,gid=5,mode=0620 0 0
+none /dev/shm tmpfs rw,nosuid,nodev 0 0
+
+/dev/sda6 /media/sda6 ext3 rw 0 0
+EOF
+cd /media/sda7
+mount -o bind /proc proc
+mount -o bind /dev dev
+mount -o bind /sys sys
+mount -o bind /dev/pts dev/pts
+#mount -o bind /lib/modules/2.6.31-15-generic lib/modules/2.6.31-15-generic
+mount -o bind /lib/modules/2.6.38-8-generic lib/modules/2.6.38-8-generic
+mount -o bind /var/log var/log
+
+chroot ./ /etc/rc.local
+chroot ./ /etc/init.d/ssh start
+chroot ./ /etc/init.d/tftpd-hpa start
+
+mount_sda3()
+{
+mount /dev/sda3 /media/sda3
+cd /media/sda3
+mount -o bind /proc proc
+mount -o bind /dev dev
+mount -o bind /sys sys
+mount -o bind /dev/pts dev/pts
+#mount -o bind /lib/modules/2.6.31-15-generic lib/modules/2.6.31-15-generic
+mount -o bind /lib/modules/2.6.38-8-generic lib/modules/2.6.38-8-generic
+mount -o bind /var/log var/log
+
+#chroot ./ /etc/rc.local
+chroot ./ /etc/init.d/sshd start
+}
+
+mount_sda10()
+{
+mount /dev/sda10 /media/sda10
+cd /media/sda10
+mount -o bind /proc proc
+mount -o bind /dev dev
+mount -o bind /sys sys
+mount -o bind /dev/pts dev/pts
+#mount -o bind /lib/modules/2.6.31-15-generic lib/modules/2.6.31-15-generic
+#mount -o bind /lib/modules/2.6.38-8-generic lib/modules/2.6.38-8-generic
+mount -o bind /var/log var/log
+
+#chroot ./ /etc/rc.local
+chroot ./ /bin/bash -c "/etc/init.d/ssh start"
+}
+
+#mount_sda3
+mount_sda10
+
+export LANG=zh_CN.UTF-8
+export LANGUAGE=zh_CN:en
+export LC_ALL="zh_CN.UTF-8"
+
+export HOME=/root
+cd /root/ && ./start_vncserver_all.sh >/tmp/start_vncserver.log 2>&1
+
+start_scst()
+{
+	cd /opt/scst_a
+	./prepare_ramdisk.sh
+	./reload_target1.sh
+}
+
+start_scst
+
+cd /dev/
+mkdir dev
+mv sda* dev/
+
+exit 0
+

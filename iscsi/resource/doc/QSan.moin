@@ -1,0 +1,225 @@
+# QSan iSCSI 盘阵性能测试
+
+<<TableOfContents>>
+
+== QSan盘阵系统信息 ==
+{{{
+系统信息        QEA16S2 1.0.3 (build 200801101900)
+CPU类型        XSC3-IOP8134x Family rev 9 (v5l)
+已安装的系统内存 ECC Unbuffered DDR-II 1024MB
+控制器序列号    001378A8A051
+}}}
+
+
+------
+== open-iscsi + iozone ==
+Linux主机配置(192.168.100.182)：
+	* Dell R710服务器，CPU8核2GHZ，内存8G
+	* linux kernel 2.6.31.5-686
+	* iozone v3.279
+磁盘信息
+	* 共有4块磁盘，组成1个Raid5磁盘组r5，其中分配了两个用户卷lun0和lun1，lun0使用write back方式，lun1使用write through方式
+{{{
+ID                     磁盘组
+1 203d001378a8a051 931 r5     良好  RD  3.0Gb/s 
+2 203c001378a8a051 931 r5     良好  RD  3.0Gb/s 
+3 2129001378a4a205 931 r5     良好  RD  3.0Gb/s 
+4 2131001378a4a205 931 r5     良好  RD  3.0Gb/s 
+}}}
+
+在Linux主机上运行open-iscsi连接到target，使用iozone测试
+
+=== 块大小1M ===
+{{{
+sudo iozone -i0 -i1 -r1m -s10000m -I -f /dev/sdx
+}}}
+测试顺序写、顺序读、块大小1M，每项测试数据大小10000M，direct I/O 模式（不经过系统缓存）
+
+==== 盘阵设为write back(访问lun0) ====
+	* 盘阵和主机MTU都为1500， 写：106MBps；读：106MBps
+	* 盘阵和主机MTU都为8000， 写：105MBps；读：107MBps
+	
+==== 盘阵设为write through(访问lun1) ====
+	* 盘阵和主机MTU都为1500， 写：45MBps；读：106MBps
+	* 盘阵和主机MTU都为8000， 写：45MBps；读：107MBps
+
+----
+=== 块大小1K ===
+{{{
+sudo iozone -i0 -i1 -r1k -s100m -I -f /dev/sdx
+}}}
+测试顺序写、顺序读、块大小1k（iozone最小块大小只能1K），每项测试数据大小100M，direct I/O 模式（不经过系统缓存）
+
+==== 盘阵设为write back(访问lun0) ====
+	* 盘阵和主机MTU都为1500， 写：7MBps；读：7MBps
+	* 盘阵和主机MTU都为8000， 写：7MBps；读：5MBps
+	
+==== 盘阵设为write through(访问lun1) ====
+	* 盘阵和主机MTU都为1500， 写：0.6MBps；读：7MBps
+	* 盘阵和主机MTU都为8000， 写：0.6MBps；读：3MBps
+------
+== microsoft iscsi initiator + iometer ==
+Windows主机配置(192.168.100.181)：
+	* Dell R710服务器，CPU8核2GHZ，内存8G
+	* Windows 2003 SP2
+	* iometer 2006.07.27
+磁盘信息
+	* 共有4块磁盘，组成1个Raid5磁盘组r5，其中分配了两个用户卷lun0和lun1，lun0使用write back方式，lun1使用write through方式
+{{{
+ID                     磁盘组
+1 203d001378a8a051 931 r5     良好  RD  3.0Gb/s 
+2 203c001378a8a051 931 r5     良好  RD  3.0Gb/s 
+3 2129001378a4a205 931 r5     良好  RD  3.0Gb/s 
+4 2131001378a4a205 931 r5     良好  RD  3.0Gb/s 
+}}}
+在Windows主机上运行microsoft iscsi initiator连接到target，使用iometer测试
+
+=== 块大小1M ===
+测试顺序写、顺序读、块大小1M，测试时间至少5分钟，"# of Outstanding I/Os" 设为 64
+
+==== 盘阵设为write back(访问lun0) ====
+	* 盘阵和主机MTU都为1500， 写：112MBps；读：112MBps
+	* 盘阵和主机MTU都为8000， 写：117MBps；读：112MBps
+	
+==== 盘阵设为write through(访问lun1) ====
+	* 盘阵和主机MTU都为1500， 写：69MBps；读：112MBps
+	* 盘阵和主机MTU都为8000， 写：70MBps；读：112MBps
+
+----
+=== 块大小1K ===
+测试顺序写、顺序读、块大小1K，测试时间至少10分钟，"# of Outstanding I/Os" 设为 64
+
+==== 盘阵设为write back(访问lun0) ====
+	* 盘阵和主机MTU都为1500， 写：36MBps；读：41MBps
+	* 盘阵和主机MTU都为8000， 写：35MBps；读：39MBps
+	
+==== 盘阵设为write through(访问lun1) ====
+	* 盘阵和主机MTU都为1500， 写：6MBps；读：41MBps
+	* 盘阵和主机MTU都为8000， 写：5MBps；读：39MBps
+	
+------
+== QSan两个网口分别连接不同主机对比测试 ==
+Linux主机1配置(192.168.100.182)：
+	* Dell R710服务器，CPU8核2GHZ，内存8G
+	* linux kernel 2.6.31.5-686
+	* iozone v3.279
+	
+Linux主机2配置(192.168.100.109)：
+	* Dell R710服务器，CPU8核2GHZ，内存8G
+	* linux kernel 2.6.31-15-generic
+	* iozone v3.279
+	
+Windows主机配置(192.168.100.181)：
+	* Dell R710服务器，CPU8核2GHZ，内存8G
+	* Windows 2003 SP2
+	* iometer 2006.07.27
+
+共有7块磁盘，磁盘组配置
+	* 1-4磁盘组成Raid5磁盘组r5，其中分配了两个用户卷lun0和lun1，lun0是write back方式，lun1是write through方式
+	* 5-7磁盘组成Raid5磁盘组r5_2，其中分配了两个用户卷lun2和lun3，lun2是write back方式，lun3是write through方式
+{{{
+ID                     磁盘组
+1 203d001378a8a051 931 r5     良好  RD  3.0Gb/s 
+2 203c001378a8a051 931 r5     良好  RD  3.0Gb/s 
+3 2129001378a4a205 931 r5     良好  RD  3.0Gb/s 
+4 2131001378a4a205 931 r5     良好  RD  3.0Gb/s 
+5 2042001378a8a051 931 r5_2   良好  RD  3.0Gb/s 
+6 2043001378a8a051 931 r5_2   良好  RD  3.0Gb/s 
+7 2044001378a8a051 931 r5_2   良好  RD  3.0Gb/s 
+}}}
+
+网口配置
+	* Window主机或Linux主机2连接网口1
+	* Linux1主机连接网口2
+
+----
+=== 两台主机通过不同网口读写不同的Raid磁盘组 ===
+==== 块大小1M ====
+测试顺序读、顺序写、块大小1M
+	* Windows主机通过测试时间至少10分钟，"# of Outstanding I/Os" 设为64
+	* Linux主机每项测试数据大小10000M，direct I/O 模式（不经过系统缓存）
+iozone操作命令
+{{{
+sudo iozone <-i0|-i1> -r1m -s10000m -I -f /dev/sdx
+}}}
+
+===== 盘阵设置为Write Back方式 =====
+	* 盘阵和主机MTU都设置为1500:
+		* (Windows主机访问lun2）写：108MBps；读：111MBps  (Linux主机访问lun0)写：94MBps；读：93MBps
+		* (Linux主机2访问lun2）写：96MBps；读：91MBps  (Linux主机1访问lun0)写：95MBps；读：91MBps
+	* 盘阵和主机MTU都设置为8000：
+		* (Windows主机访问lun2）写：109MBps；读：111MBps  (Linux主机访问lun0)写：95MBps；读：99MBps
+		* (Linux主机2访问lun2）写：97MBps；读：93MBps  (Linux主机1访问lun0)写：96MBps；读：93MBps
+
+===== 盘阵设置为Write Through方式 =====
+	* 盘阵和主机MTU都设置为1500：
+		* (Windows主机访问lun3）写：71MBps；读：112MBps  (Linux主机访问lun1)写：45MBps；读：101MBps
+		* (Linux主机2访问lun3）写：98MBps；读：94MBps  (Linux主机1访问lun1)写：45MBps；读：94MBps
+	* 盘阵和主机MTU都设置为8000：
+		* (Windows主机访问lun3）写：70MBps；读：112MBps  (Linux主机访问lun1)写：44MBps；读：103MBps
+		* (Linux主机2访问lun3）写：99MBps；读：94MBps  (Linux主机1访问lun1)写：46MBps；读：94MBps
+
+==== 块大小1K ====
+测试顺序读、顺序写、块大小1K
+	* Windows主机测试时间至少10分钟，"# of Outstanding I/Os" 设为64
+	* Linux主机每项测试数据大小100M，direct I/O 模式（不经过系统缓存）
+iozone操作命令
+{{{
+sudo iozone <-i0|-i1> -r1k -s100m -I -f /dev/sdx
+}}}
+
+===== 盘阵设置为Write Back方式 =====
+	* 盘阵和主机MTU都设置为1500:
+		* (Windows主机访问lun2）写：34MBps；读：39MBps  (Linux主机访问lun0)写：0.7MBps；读：1MBps
+		* (Linux主机2访问lun2）写：4MBps；读：7MBps  (Linux主机1访问lun0)写：7MBps；读：7MBps
+	* 盘阵和主机MTU都设置为8000:
+		* (Windows主机访问lun2）写：35MBps；读：39MBps  (Linux主机访问lun0)写：1MBps；读：6MBps
+		* (Linux主机2访问lun2）写：6MBps；读：5MBps  (Linux主机1访问lun0)写：2MBps；读：5MBps
+
+===== 盘阵设置为Write Through方式 =====
+	* 盘阵和主机MTU都设置为1500:
+		* (Windows主机访问lun3）写：5MBps；读：40MBps  (Linux主机访问lun1)写：0.5MBps；读：1MBps
+		* (Linux主机2访问lun3）写：0.6MBps；读：7MBps  (Linux主机1访问lun1)写：0.6MBps；读：7MBps
+	* 盘阵和主机MTU都设置为8000:
+		* (Windows主机访问lun3）写：5MBps；读：39MBps  (Linux主机访问lun1)写：0.5MBps；读：1MBps
+		* (Linux主机2访问lun3）写：0.6MBps；读：5MBps  (Linux主机1访问lun1)写：0.5MBps；读：5MBps
+
+----
+=== Windows主机和Linux主机通过不同网口读写相同的Raid磁盘组 ===
+==== 块大小1M ====
+测试顺序读、顺序写、块大小1M
+	* Windows主机测试时间至少10分钟，"# of Outstanding I/Os" 设为64
+	* Linux主机每项测试数据大小10000M，direct I/O 模式（不经过系统缓存）
+iozone操作命令
+{{{
+sudo iozone <-i0|-i1> -r1m -s10000m -I -f /dev/sdx
+}}}
+
+
+===== 盘阵设置为Write Back方式 =====
+	* 盘阵和主机MTU都设置为1500  (Windows主机访问lun0）写：109MBps；读：111MBps  (Linux主机访问lun0)写：45MBps；读：16MBps
+	* 盘阵和主机MTU都设置为8000  (Windows主机访问lun0）写：107MBps；读：110MBps  (Linux主机访问lun0)写：43MBps；读：16MBps
+
+===== 盘阵设置为Write Through方式 =====
+	* 盘阵和主机MTU都设置为1500  (Windows主机访问lun1）写：65MBps；读：110MBps  (Linux主机访问lun1)写：13MBps；读：17MBps
+	* 盘阵和主机MTU都设置为8000  (Windows主机访问lun1）写：64MBps；读：109MBps  (Linux主机访问lun1)写：13MBps；读：16MBps
+
+==== 块大小1K ====
+测试顺序读、顺序写、块大小1K
+	* Windows主机测试时间至少10分钟，"# of Outstanding I/Os" 设为64
+	* Linux主机每项测试数据大小100M，direct I/O 模式（不经过系统缓存）
+iozone操作命令
+{{{
+sudo iozone <-i0|-i1> -r1k -s100m -I -f /dev/sdx
+}}}
+
+===== 盘阵设置为Write Back方式 =====
+	* 盘阵和主机MTU都设置为1500  (Windows主机访问lun0）写：36MBps；读：32MBps  (Linux主机访问lun0)写：0.5MBps；读：5MBps
+	* 盘阵和主机MTU都设置为8000  (Windows主机访问lun0）写：35MBps；读：35MBps  (Linux主机访问lun0)写：0.6MBps；读：7MBps
+
+===== 盘阵设置为Write Through方式 =====
+	* 盘阵和主机MTU都设置为1500  (Windows主机访问lun1）写：5MBps；读：37MBps  (Linux主机访问lun1)写：0.1MBps；读：1.7MBps
+	* 盘阵和主机MTU都设置为8000  (Windows主机访问lun1）写：5MBps；读：35MBps  (Linux主机访问lun1)写：0.1MBps；读：1.8MBps
+
+----
+[[Category-iSCSI]]

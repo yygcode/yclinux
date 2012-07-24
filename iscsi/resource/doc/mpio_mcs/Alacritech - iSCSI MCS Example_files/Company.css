@@ -1,0 +1,133 @@
+﻿/* BEGIN: Table */
+
+.InvestorsTable
+{
+	width: 95%;
+	text-align: left;
+}
+
+.InvestorsTable tr
+{
+	vertical-align: top;	
+}
+
+.InvestorsTable td
+{
+	width: 50%;
+	padding-bottom: 10px;	
+	padding-right: 30px;
+}
+
+.PressCenterTable
+{
+	width: 100%;
+}
+
+.PressCenterRightColumn
+{
+	text-align: right;
+	width: 160px;
+	padding-left: 20px;
+	vertical-align: top;	
+}
+
+/* END: Table */
+
+/* BEGIN: Press Center SubNav */
+
+.PressArchiveNavHeader
+{
+	width: 160px;
+	height: 25px;
+	background-image: url(Images/Company/PressCenter/press_archives_subnav_heade.jpg);
+	background-repeat: no-repeat;
+}
+
+.PressCenterNavHeader
+{
+	width: 160px;
+	height: 25px;
+	background-image: url(Images/Company/PressCenter/press_center_subnav_header.gif);
+	background-repeat: no-repeat;
+}
+
+.PressCenterNavBody
+{
+	color: #4b395d;
+	width: 160px;
+	padding: 8px 0px 8px 0px;
+	background-image: url(Images/Company/PressCenter/press_center_subnav_bg.gif);
+	background-repeat: repeat-y;
+	text-align: left;
+}
+
+.PressCenterNavFooter
+{
+	width: 160px;
+	height: 8px;
+	background-image: url(Images/Company/PressCenter/press_center_subnav_footer.gif);
+	background-repeat: no-repeat;
+}
+
+.PressCenterNavLink
+{
+	color: #372a17;
+	padding: 6px 16px 6px 40px;	
+}
+
+.PressCenterNavLink a
+{
+	color: #372a17 !important;
+	text-decoration: none;
+}
+
+.PressCenterNavLink a:hover
+{
+	color: #a22f68 !important;
+	text-decoration: underline;
+}
+
+.PressCenterNavSelectedLink
+{
+	color: #a22f68;
+	padding: 6px 16px 6px 40px;
+	background-image: url(Images/General/Arrow_Selection1.gif);
+	background-repeat: no-repeat;
+	background-position: 18px 11px;
+}
+
+.PressCenterNavSelectedLink a
+{
+	color: #a22f68 !important;
+	font-weight: bold;
+	text-decoration: none;
+}
+
+.PressCenterNavSelectedLink a:hover
+{
+	color: #372a17 !important;
+	font-weight: bold;
+	text-decoration: underline;
+}
+
+.ReleaseHeading
+{
+	font-size: 10pt;
+	font-weight: bold;
+	text-align: center;	
+}
+
+.ReleaseSubHeading
+{
+	font-style: italic;
+	text-align: center;	
+}
+
+/* END: Press Center SubNav */
+
+.articleDate
+{
+	font-size: 7pt;
+	font-weight: bold;
+	line-height: 18px;	
+}

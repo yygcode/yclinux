@@ -1,0 +1,102 @@
+# iSCSI优化迭代过程3 - 分阶式从网络收数据写到RAID5
+	* SVN库： http://192.168.100.101/svn/esp/trunk/iscsi/kernel/net_io_page_poll 版本号 139
+	* 本文所述为 net_io_page_pool 测试程序，非 iSCSI 程序
+	
+	* 第一阶段：从网络收数据的同时写一部分数据到块设备
+	* 第二阶段：暂停从网络收数据，把累积的未写入的数据一次性写入块设备
+	
+	* int n_read; //从网络收数据的计数器
+	* int n_write; //写数据到块设备的计数器
+	* 第二阶段完成后， n_read和n_write同时清零
+	
+	* int write_ratio; //第一阶段写数据占收数据的百分比
+		* 例如： write_ratio = 50，表示第一阶段写50%的数据
+	
+	* int stage; //阶段标记
+		* STAGE_1      //第一阶段
+		* STAGE_2      //第二阶段
+	
+	* int n_stage2_start; //当未写的数据（read_idx-write_idx）累积到 n_stage2_start 时就开始第二阶段
+	
+	* 从网络收数据线程:
+		* while(stage == STAGE_2) msleep(1);
+		* 收满一次数据就 n_read++
+		
+	* 写块设备线程：
+		* int n_to_write; //当前需要写的数据数量(pg_array数）
+		* stage = STAGE_1;
+		* if( (read_idx-write_idx) >= n_stage2_start ) {
+			* n_to_write = read_idx - write_idx;
+			* stage = STAGE_2;
+			
+			* 循环写n_to_write个pg_array到块设备
+				* write_idx++
+				
+			* wait_for_rw_end();
+			
+			* n_read = 0;
+			* n_write = 0;
+			* stage = STAGE_1;
+		* else {
+			* n_to_write = n_read*write_ratio/100 - n_write
+			* if(n_to_write <= 0){
+				* msleep(1);
+			* else {
+				* 循环写n_to_write个pg_array到块设备
+					* write_idx++
+					* n_write++;
+			* } //if
+		* } //if
+
+	* 测试结果
+		* write_ratio = 50
+		{{{
+$./tcp_send_client 192.168.103.190 60001 0 100000 60000
+speed: 80.702360 MB/s
+		}}}
+		
+		{{{
+# insmod net_io_test.ko order=4
+net_io: server start, port: 60001, echo: 0, dev: /dev/md1, order: 4, pg_nbr: 16, with_net:1, with_io: 1, write_size: 6144 MByte, pid_raid5: 377
+
+net_io: write 5859328 KBytes, time 70984 mesc, speed: 82.54 MByte
+net_io: net_io_server cpu: 73.03%, net_io_write cpu: 2.83%, raid5 cpu: 17.70%, all net_io cpu: 93.56%, system total cpu: 93.89%
+		}}}
+	
+		* write_ratio = 35
+		{{{
+$./tcp_send_client 192.168.103.190 60001 0 100000 60000
+speed: 80.044553 MB/s
+		}}}
+		
+		{{{
+# insmod net_io_test.ko order=4
+net_io: server start, port: 60001, echo: 0, dev: /dev/md1, order: 4, pg_nbr: 16, with_net:1, with_io: 1, write_size: 6144 MByte, pid_raid5: 377
+
+net_io: write 5859328 KBytes, time 71531 mesc, speed: 81.91 MByte
+net_io: net_io_server cpu: 59.96%, net_io_write cpu: 3.57%, raid5 cpu: 24.78%, all net_io cpu: 88.31%, system total cpu: 88.67%
+		}}}
+
+		* write_ratio = 35，mtu = 9000
+		{{{
+# insmod net_io_test.ko order=4
+net_io: write 8192000 KBytes, time 95882 mesc, speed: 85.43 MByte
+net_io: net_io_server cpu: 42.16%, net_io_write cpu: 3.75%, raid5 cpu: 26.03%, all net_io cpu: 71.94%, system total cpu: 72.77%
+		}}}
+
+		* write_ratio = 50，mtu = 9000
+		{{{
+# insmod net_io_test.ko order=4
+net_io: write 8192000 KBytes, time 89477 mesc, speed: 91.55 MByte
+net_io: net_io_server cpu: 52.51%, net_io_write cpu: 3.24%, raid5 cpu: 19.84%, all net_io cpu: 75.59%, system total cpu: 76.36%
+		}}}
+
+		* write_ratio = 65，mtu = 9000
+		{{{
+# insmod net_io_test.ko order=4
+net_io: write 8192000 KBytes, time 83459 mesc, speed: 98.15 MByte
+net_io: net_io_server cpu: 63.89%, net_io_write cpu: 2.42%, raid5 cpu: 25.84%, all net_io cpu: 92.15%, system total cpu: 92.90%
+		}}}
+
+----
+[[Category-WisESP]]

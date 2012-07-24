@@ -1,0 +1,68 @@
+# = iSCSI优化迭代过程4 =
+<<TableOfContents>>
+
+	* 时间 20100517 - 20100521
+	* SVN库版本号：226
+
+=== 延后bio提交（提前应答） ===
+
+	* scst_release_space()函数的修改
+		* 只有当cmd为WRITE类型时才做修改
+			* cmd->cdb[0] 为 WRITE_6、WRITE_10、WRITE_12、WRITE_16 中之一时，cmd为WRITE类型
+		* 把 sgv_pool_free(cmd->sgv, &cmd->dev->dev_mem_lim); 一行注释掉
+			* 由于延后bio提交，因此要延后释放相关内存
+	
+	* 定义结构体 struct bio_info_t
+	{{{#!cplusplus
+struct bio_info_t
+{
+	struct sgv_pool_obj *sgv;
+	struct scst_mem_lim *mem_lim;
+	struct bio *hbio;
+	atomic_t ref_count;
+};
+	}}}
+	
+	* 定义全局变量
+	{{{#!cplusplus
+#define BIO_INFO_POOL_SIZE    1048576
+struct bio_info_t bio_info_pool[BIO_INFO_POOL_SIZE];
+uint64_t idx_producer;
+uint64_t idx_consumer;
+	}}}
+		* idx_producer 和 idx_consumer 是一直增加的数，使用时需要转换：
+			* bio_info_pool[(uint32_t)idx_producer%BIO_INFO_POOL_SIZE]
+			* bio_info_pool[(uint32_t)idx_consumer%BIO_INFO_POOL_SIZE]
+	
+	* vdisk_do_job()函数的修改
+		* 把 blockio_exec_rw(cmd, thr, lba_start, 1) 替换为 blockio_exec_write(cmd, thr, lba_start)
+	
+	* 增加blockio_exec_write() 函数
+		* 把blockio_exec_rw() 函数的内容复制到此函数
+		
+		* while(atomic_read(bio_info_pool[idx_producer].ref_count) > 0) msleep(100)
+		
+		* 保存 cmd->sgv、 &cmd->dev->dev_mem_lim、hbio到bio_info_pool[idx_producer]
+			* sgv 和 dev_mem_lim 这两个指针用于对应的bio提交完成后释放内存： sgv_pool_free(sgv, mem_lim);
+			
+			
+		* bio->bi_end_io = blockio_endio_write
+		
+		* 不再调用 submit_bio()，改为调用blockio_check_finish(blockio_work);
+		* 每产生一个bio就 bio_info_pool[idx_producer].ref_count 加1
+		* 把bio->bi_private改为&bio_info_pool[idx_producer]
+		* 成功设置bio_info后，函数返回前 idx_producer++
+	
+	* 增加blockio_endio_write()函数
+		* bio_info->ref_count 减1，如果为0就：
+			* 释放内存，调用 sgv_pool_free(sgv, mem_lim);
+	
+	* 增加一个线程，专门用于提交bio
+		* while(1) {
+			* while(idx_consumer == idx_producer) msleep(100)
+			* 提交bio_info_pool[idx_consumer].hbio中所有的bio
+			* idx_consumer++
+		* } //循环
+	
+----
+[[Category-WisESP]]

@@ -1,0 +1,77 @@
+# = iSCSI优化迭代过程3 =
+<<TableOfContents>>
+
+	* 时间 20100419 - 20100430
+	* SVN库版本号：
+
+	* 任务目标：
+		* 编写内核代码测试从网络写数据到ESP RAID5 块设备的极限性能
+
+
+=== 编写内核代码测试从网络写数据到ESP RAID5 块设备的极限性能 ===
+
+	* 测试配置1
+		* 4块盘RAID5，服务器端不回应答,顺序写入RAID5块设备/dev/md1
+		* 使用bio方式写块设备
+		* 每次bio提交 16 pages
+		
+		* 只写块设备，不收网络数据时的速率是 216.06 MBps，top显示如下：
+		{{{
+Cpu(s):  0.0%us, 83.1%sy,  0.0%ni,  0.3%id,  0.0%wa,  0.7%hi, 15.9%si,  0.0%st
+Mem:   1846980k total,    43180k used,  1803800k free,       20k buffers
+Swap:        0k total,        0k used,        0k free,     8540k cached
+
+  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
+  377 root      15  -5     0    0    0 S 84.8  0.0   1:01.04 md1_raid5
+12711 root      15  -5     0    0    0 R 14.6  0.0   0:10.97 net_io_server
+		}}}
+		
+		* 只接收网络数据，不写块设备时的速率是 111.80 MBps，top显示如下：
+		{{{
+Cpu(s):  1.7%us, 23.5%sy,  0.0%ni, 53.6%id,  0.0%wa,  0.0%hi, 21.2%si,  0.0%st
+Mem:   1846980k total,    91860k used,  1755120k free,      332k buffers
+Swap:        0k total,        0k used,        0k free,    10564k cached
+
+  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
+13284 root      15  -5     0    0    0 R 44.4  0.0   2:00.75 net_io_server
+		}}}
+
+		* 接收网络数据写到块设备时的速率是 77.79 MBps，top显示如下：
+		{{{
+Cpu(s):  0.3%us, 62.6%sy,  0.0%ni,  0.0%id,  0.0%wa,  2.6%hi, 34.4%si,  0.0%st
+Mem:   1846980k total,    54384k used,  1792596k free,       20k buffers
+Swap:        0k total,        0k used,        0k free,     8628k cached
+
+  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
+13192 root      15  -5     0    0    0 R 54.6  0.0   0:07.84 net_io_server
+  377 root      15  -5     0    0    0 R 44.7  0.0   1:35.69 md1_raid5
+		}}}
+	
+	* 测试配置2
+		* 只写RAID，写速率限制为50MBps
+		* 同时运行iperf接收网络数据，使其速率达到100MBps
+		* 测试结果：
+			* 写RAID的速率为 ??? MBps
+			* iperf传输速率为 ??? MBps
+			* CPU占用:
+				* RAID ???%
+				* iperf ???%
+				* 写RAID线程 ???%
+				* 总共 ???% (使用/proc/stat计算）
+	
+	* 测试配置3
+		* 内核代码从网络接收写RAID
+		* 一个线程接收网络数据，把page数组指针追加到一个指针数组中
+		* 一个线程依次从指针数组中取出page数组指针，把数据写到RAID块设备
+		* 把写RAID的速率控制为 50MBps
+		* 使网络数据传输速率达到 100MBps
+		* 测试结果：
+			* 写RAID的速率为 ??? MBps
+			* 网络传输速率为 ??? MBps
+			* CPU占用:
+				* RAID ???%
+				* 接收网络数据的线程 ???%
+				* 写RAID线程 ???%
+				* 总共 ???% (使用/proc/stat计算）
+----
+[[Category-WisESP]]

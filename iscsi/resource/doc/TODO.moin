@@ -1,0 +1,13 @@
+	* list_for_each_entry_safe
+
+
+===================
+	* full_stripe_size 放到 virt_dev 中
+	* bio_info中不定义bi_destructor_bak
+	* sgv_info 中 ref_count不使用原子
+	* bio_info->overlap_count 不定义为原子变量
+	* alloc_bio_info() 和 get_idle_bio_info() 加入 virt_dev 参数
+	
+	
+	* add_idle_bio()中没有把bio加入bio_idle_list
+	* 修改dispatch_bio

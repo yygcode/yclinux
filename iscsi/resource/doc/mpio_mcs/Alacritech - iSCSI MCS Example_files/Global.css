@@ -1,0 +1,596 @@
+﻿/* BEGIN: Body / Global / Template */
+body a:link
+{
+	color: #372a17;
+}
+
+body a:visited
+{
+	color: #a22f68;
+}
+
+body a:hover
+{
+	color: #a22f68;
+}
+
+body a:active
+{
+	color: #372a17;
+}
+
+img
+{
+	border: 0;	
+}
+
+body
+{
+	margin: 0;
+	text-align: center;
+	font-family: Verdana;
+	color: #4b395d;
+	background-color: White;
+	background-image: url(Images/Template/bgStrip.jpg);
+	background-repeat: repeat-x;
+	height: 100%;
+	min-height:600px;
+	height:auto !important;
+	height:600px;
+}
+
+.ContentBoundries
+{
+	width: 976px;
+	height: 100%;
+	margin: 0 auto;
+	text-align: left;
+	position: relative;
+}
+
+.Header
+{
+	background-image: url(Images/Template/MainHeader4.jpg);
+	background-repeat: no-repeat;
+	overflow: hidden;
+	height: 125px;
+	max-height: 125px !important;
+	background-color: #f7f7f7;
+}
+
+.HomeHeader
+{
+	background-image: url(Images/Template/newheader_lgo.jpg);
+	background-repeat: no-repeat;
+	overflow: hidden;
+	height: 121px;
+	max-height: 125px !important;
+	background-color: #f7f7f7;
+}
+
+.ContentOuter
+{
+	position: relative;
+	background-color: White;
+	min-height:600px;
+	height:auto !important;
+	height:600px;
+}
+
+.Content
+{
+	position: relative;
+	padding: 30px 70px 30px 70px;
+	min-height:600px;
+	height:auto !important;
+	height:600px;
+}
+
+.ContentTable
+{
+	width: 977px;
+	height: 100%;	
+}
+
+.TableInnerContent
+{
+	width: 957px;	
+}
+
+.Spotlight
+{
+	left: 10px;
+	width: 957px;
+	position: relative;
+	z-index: 3;
+}
+
+.SpotlightContent
+{
+	padding: 40px 0px 40px 40px;
+}
+
+.SpotlightContentHead
+{
+	width: 619px;
+    background-color: #911a6a;
+    color: white;
+	font-family: Verdana;
+	font-size: 8pt;
+	font-weight: bold;
+}
+
+.SpotlightContentHeadPad
+{
+	padding: 6px 0px 6px 12px;	
+}
+
+.SpotlightContentText
+{
+	width: 617px;
+	border: solid 1px #cfcfcf;
+	color: #4b395d;
+	font-family: Verdana;
+	font-size: 8pt;
+}
+
+.SpotlightContentTextPad
+{
+	padding: 12px 12px 12px 12px;
+	color: #a22f68;
+}
+
+.Footer
+{
+	background-image: url(Images/Template/Footer.jpg);
+	background-repeat: no-repeat;
+	height: 33px;
+}
+
+.FooterContent
+{
+	width: 957px;
+	height: 23px;
+}
+
+.FooterLinksTable
+{
+	width: 100%; 
+	height: 23px;
+}
+
+.FooterTextArea
+{
+	position: relative;
+	top: -1px;
+	text-align: center;
+}
+
+.FooterLinkArea
+{
+	color: white;
+	font-family: Verdana;
+	font-size: 8pt;
+	text-align: center;
+}
+
+.FooterLinkArea a:link
+{
+	color: white;
+	text-decoration: none;
+	font-weight: bold;
+}
+
+.FooterLinkArea a:visited
+{
+	color: white;
+	text-decoration: none;
+	font-weight: bold;
+}
+
+.FooterLinkArea a:active
+{
+	color: white;
+	text-decoration: none;
+	font-weight: bold;
+}
+
+.FooterLinkArea a:hover
+{
+	color: #dcb426;
+	text-decoration: underline;
+	font-weight: bold;
+}
+
+.FooterSpacer
+{
+	color: #9c90a1;
+	font-family: Verdana;
+	font-size: 8pt;
+}
+
+.subFooter
+{
+	text-align: center;
+	font-family: Verdana;
+	font-size: 8pt;
+	padding: 15px 0px 40px 0px;
+	text-decoration: none;
+	font-weight: bold;
+}
+
+.subFooter a:link
+{
+	color: #533b5b;
+	text-decoration: none;
+}
+
+.subFooter a:visited
+{
+	color: #a22f68;
+	text-decoration: none;
+}
+
+.subFooter a:hover
+{
+	color: #a22f68;
+	text-decoration: underline;
+}
+
+.subFooter a:active
+{
+	
+	text-decoration: none;
+}
+
+.ShadowColumnLeft
+{
+	width: 10px;
+	background-image: url(Images/Template/ShadowLeftRepeat.jpg);
+	background-repeat: repeat-y;
+	height: 100%;
+}
+
+.ShadowColumnLeftHome
+{
+	width: 10px;
+	background-image: url(Images/Template/left_grade.jpg);
+	background-repeat: repeat-y;
+	height: 100%;
+}
+
+.ShadowColumnRight
+{
+	width: 10px;
+	background-image: url(Images/Template/ShadowRightRepeat.jpg);
+	background-repeat: repeat-y;
+	height: 100%;
+}
+
+.ShadowColumnRightHome
+{
+	width: 10px;
+	background-image: url(Images/Template/right_grade.jpg);
+	background-repeat: repeat-y;
+	height: 100%;
+}
+
+.ShadowOverlayLeft
+{
+	width: 10px;
+	background-image: url(Images/Template/ShadowLeft.jpg);
+	background-repeat: no-repeat;
+	min-height: 600px;
+	height: 100%;
+}
+
+.ShadowOverlayRight
+{
+	width: 10px;
+	background-image: url(Images/Template/ShadowRight.jpg);
+	background-repeat: no-repeat;
+	min-height: 600px;
+	height: 100%;
+}
+
+/* END: Body / Global / Template */
+
+/* BEGIN: Navigation Menu */
+.LogoLink
+{
+	position: relative; 
+	width: 150px; 
+	height: 50px; 
+	top: 0px; 
+	left: 25px; 
+	cursor: pointer;
+	float: left;
+}
+
+.NavigationMenu
+{
+	position: relative;
+	left: 210px;
+	top: 82px;	
+	
+}
+
+.HomeNavigationMenu
+{
+	position: relative;
+	left: 203px;
+	top: 75px;	
+	
+}
+
+.TopMenuItemHover
+{
+	cursor: pointer;	
+}
+
+.MenuGroup
+{
+	border: solid 1px #acacac;	
+}
+
+.MenuItem
+{
+	height: 20px;
+	font-size: 10px;
+	padding: 0px 2px 0px 2px;
+	background-image: url(Images/Navigation/buttonbg_up.gif);
+	background-repeat: repeat-x;
+}
+
+.MenuItemHover
+{
+	height: 20px;
+	font-size: 10px;
+	padding: 0px 2px 0px 2px;
+	background-image: url(Images/Navigation/buttonbg_over.gif);
+	background-repeat: repeat-x;
+	color: White;
+	cursor: pointer;
+}
+
+/* END: Navigation Menu */
+
+/* BEGIN: Navigation Search */
+
+.Search
+{
+	text-align: right;
+	position: relative;
+	top: 4px;
+	padding-right: 32px;	
+}
+
+.SearchBox
+{
+	border: solid 1px #aeaeae;
+	background-image: url(Images/Template/SearchBoxBg.gif);
+	background-repeat: repeat-x;	
+}
+
+.SearchButton
+{
+	position: relative;	
+	top: 6px;
+	border-style: none;
+}
+
+.seachResults
+{
+	max-height: 1200px !important;
+	overflow: hidden;
+}
+
+/* END: Navigation Search */
+
+/* BEGIN: Breadcrumb */
+.BreadCrumbInactive, .BreadCrumbActive
+{
+	font-size: 8pt;
+	font-family: Verdana;
+}
+
+.BreadCrumbInactive
+{
+	color: #372a17;
+	text-decoration: none;
+}
+
+.BreadCrumbInactive:link
+{
+	color: #372a17;
+	text-decoration: none;
+}
+
+
+.BreadCrumbInactive:visited
+{
+	color: #372a17;
+	text-decoration: none;
+}
+
+.BreadCrumbInactive:active
+{
+	color: #372a17;
+	text-decoration: none;
+}
+
+.BreadCrumbInactive:hover
+{
+	color: #a22f68;
+	text-decoration: underline;	
+}
+
+.BreadCrumbActive
+{
+	color: #a22f68;
+}
+
+/* END: Breadcrumb */
+
+/* BEGIN: Page */
+
+.InlineContent
+{
+	max-width: 760px;
+	padding:  30px 45px 30px 45px;
+	font-size: 8pt;
+}
+
+.InlineContentWide1
+{
+	padding:  30px 0px 30px 0px;
+	font-size: 8pt;
+}
+
+.InlineSidebarContent
+{
+	padding: 30px 0px 30px 70px;
+	font-size: 8pt;
+}
+
+.InlineDate
+{
+	font-weight: bold;
+	color: #9b1e5c;	
+}
+
+.InlineHeading1
+{
+	font-weight: bold;
+	line-height: 20px;
+	color: #9b1e5c;
+}
+
+.InlineHeading2
+{
+	color: #9b1e5c;
+	font-weight: bold;
+	font-size: 16pt;	
+}
+
+.InlineHeading3
+{
+	font-weight: bold;
+	font-size: 12pt;
+	color: #9b1e5c;	
+}
+
+.InlineHeading4
+{
+	font-size: 125%;
+	font-weight: bold;
+	color: #606060;	
+	line-height: 1.2em;
+}
+
+.InlineTitleSpacer1
+{
+	height: 20px;	
+}
+
+.InlineParagraph
+{
+	padding-top: 5px;
+}
+
+.InlineListText
+{
+	line-height: 16px;
+}
+
+.InlineList1
+{
+	 list-style-type: none;
+}
+
+.InlineList1 li
+{
+	line-height: 16px;
+}
+
+.InlineList2
+{
+	 
+}
+
+.InlineList2 li
+{
+	line-height: 10px;
+	padding-bottom: 8px;
+}
+
+.InlineColumnLeft
+{
+	float: right;
+	position: relative;
+}
+
+.InlineColumnRight
+{
+	float: right;
+	padding-left: 20px;
+	position: relative;
+	width: 200px;
+}
+
+.Spacer1
+{
+	height: 16px;
+}
+
+.LongTableText
+{
+	font-size: 7pt;
+}
+
+.ExpandedList
+{
+	line-height: 16px;	
+}
+
+.FormTable
+{
+	
+}
+
+.FormTable td
+{
+	padding: 4px;
+	vertical-align: top;
+}
+
+.RequiredField
+{
+	color: Red;	
+}
+
+/* END: Page */
+
+#homeStorageCycles
+{
+	font-size: 8pt;
+	font-weight: bold;
+	padding: 0px 0px 5px 405px;	
+}
+
+#storageLink
+{
+	text-decoration: none;
+}
+
+#storageArrow
+{
+	vertical-align: top;
+	padding-left: 6px;
+}
+
+.priceListHeadRow { background-color: #911a6a; color: white; font-family: Verdana; font-size: 8pt; font-weight: bold; }
+
+#priceList { width: 100%; border-top: solid 1px #000; border-left: solid 1px #000; border-right: solid 1px #000; }
+#priceList tr {  }
+#priceList td { padding: 6px 0 6px 0; text-align: center; border-bottom: solid 1px #000; }

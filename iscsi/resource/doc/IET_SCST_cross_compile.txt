@@ -1,0 +1,22 @@
+
+IET:
+make ARCH=arm CROSS_COMPILE=arm-angstrom-linux-gnueabi- KSRC=/opt/linux-2.6.29.1 kernel
+make CC=arm-angstrom-linux-gnueabi-gcc usr
+
+arm-angstrom-linux-gnueabi-strip ./usr/ietd ./usr/ietadm
+arm-angstrom-linux-gnueabi-strip -g ./kernel/iscsi_trgt.ko
+rsync -av ./usr/ietd ./usr/ietadm ./kernel/iscsi_trgt.ko root@192.168.192.192:/opt/iet/
+
+SCST:
+make ARCH=arm CROSS_COMPILE=arm-angstrom-linux-gnueabi- KDIR=/opt/linux-2.6.29.1 scst
+make ARCH=arm CROSS_COMPILE=arm-angstrom-linux-gnueabi- CC=arm-angstrom-linux-gnueabi-gcc KDIR=/opt/linux-2.6.29.1 iscsi
+
+
+
+————————————————————
+svn co https://scst.svn.sourceforge.net/svnroot/scst/trunk
+
+fix a bug
+
+scst/scst/src/Makefile
+EXTRA_CFLAGS += -DCONFIG_SCST_STRICT_SERIALIZING

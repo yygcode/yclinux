@@ -27,7 +27,7 @@ fi
 cd $compile_build || echo_exit "into compile build $compile_build failed"
 [ "$1" = "all" ] && rm -fr $compile_build/*
 if [ ! -e "Makefile" ]; then
-	./configure \
+	../configure \
 		--build=$lfs_tgt \
 		--prefix=/usr \
 		--enable-shared \

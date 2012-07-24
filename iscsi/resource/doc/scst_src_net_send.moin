@@ -1,0 +1,345 @@
+# SCST源码阅读4：网络发送相关部分源码解析
+<<TableOfContents>>
+
+本文scst的代码来源于 https://scst.svn.sourceforge.net/svnroot/scst/trunk  r1734
+----
+== 网络发送数据的叶子函数sendpage()被调用的路径 ==
+	* sendpage()
+		* write_data()
+			* iscsi_do_send()
+				* iscsi_send()
+					* iscsi_try_local_processing()
+						* iscsi_xmit_response()
+							* struct scst_tgt_template iscsi_template.xmit_response = iscsi_xmit_response
+								* scst_xmit_response()
+									* scst_process_active_cmd()
+					* process_write_queue()
+						* scst_do_job_wr()
+							* istwr()
+----
+== istwr() 线程 ==
+{{{#!cplusplus
+
+
+static inline int test_wr_list(void)
+{
+	int res = !list_empty(&iscsi_wr_list) ||
+		  unlikely(kthread_should_stop());
+	return res;
+}
+
+int istwr(void *arg)
+{
+	TRACE_ENTRY();
+
+	PRINT_INFO("Write thread started, PID %d", current->pid);
+
+	current->flags |= PF_NOFREEZE;
+
+	spin_lock_bh(&iscsi_wr_lock);
+	while (!kthread_should_stop()) {
+		wait_queue_t wait;
+		init_waitqueue_entry(&wait, current);
+
+		if (!test_wr_list()) {
+			add_wait_queue_exclusive_head(&iscsi_wr_waitQ, &wait);
+			for (;;) {
+				set_current_state(TASK_INTERRUPTIBLE);
+				if (test_wr_list())
+					break;
+				spin_unlock_bh(&iscsi_wr_lock);
+				schedule();
+				spin_lock_bh(&iscsi_wr_lock);
+			}
+			set_current_state(TASK_RUNNING);
+			remove_wait_queue(&iscsi_wr_waitQ, &wait);
+		}
+		scst_do_job_wr();
+	}
+	spin_unlock_bh(&iscsi_wr_lock);
+
+	/*
+	 * If kthread_should_stop() is true, we are guaranteed to be
+	 * on the module unload, so iscsi_wr_list must be empty.
+	 */
+	sBUG_ON(!list_empty(&iscsi_wr_list));
+
+	PRINT_INFO("Write thread PID %d finished", current->pid);
+
+	TRACE_EXIT();
+	return 0;
+}
+}}}
+
+当 iscsi_wr_list 链表不为空时，istwr()线程调用scst_do_job_wr()函数进行处理。
+----
+== 加入 iscsi_wr_list 链表 被调用的路径 ==
+搜索正则表达式 .*add.*iscsi_wr_list 即得到 加入 iscsi_wr_list 链表 被调用的位置。
+
+	* iscsi_make_conn_wr_active()
+		* iscsi_cmnds_init_write()
+			* iscsi_cmnd_init_write()
+				* req_cmnd_release()
+				* iscsi_xmit_response() //上面已有
+				* iscsi_check_send_delayed_tm_resp()
+				* iscsi_send_task_mgmt_resp()
+			* send_data_rsp()
+				* iscsi_xmit_response() //上面已有
+			* send_r2t()
+				* cmnd_rx_continue()
+				* data_out_end()
+				* iscsi_cmnd_exec()
+		* close_conn()
+			* close_conn_thr()
+				* start_close_conn()
+					* process_read_io() //前文已有
+					* `__mark_conn_closed()` //置conn->closing = 1;
+						* mark_conn_closed()
+							* conn_rsp_timer_fn()
+							* iscsi_set_prelim_r2t_len_to_receive()
+							* cmnd_prepare_recv_pdu()
+							* cmnd_rx_continue()
+							* cmnd_tx_end()
+								* iscsi_send() //上面已有
+							* check_segment_length()
+							* do_recv() //前文已有
+							* process_read_io() //前文已有
+							* exit_tx()
+								* tx_ddigest()
+								* tx_padding()
+								* iscsi_do_send() //上面已有
+						* `__iscsi_state_change()`
+							* iscsi_state_change()
+								* conn->sock->sk->sk_state_change = iscsi_state_change
+							* conn_activate()
+								* `__add_conn()`
+									* add_conn()
+										* ioctl()
+						* `__add_conn()` //上面已有
+						* `__del_conn()`
+							* del_conn()
+								* ioctl()
+						* iscsi_sess_force_close_store()
+						* target_del_session()
+			* start_close_conn() //上面已有
+	* iscsi_write_space_ready()
+		* conn->sock->sk->sk_write_space = iscsi_write_space_ready
+	* iscsi_try_local_processing()
+		* 由vdisk线程产生发送数据并调用
+	* scst_do_job_wr() //上面已有
+----
+== scst_do_job_wr()函数 ==
+{{{#!cplusplus
+static void scst_do_job_wr(void)
+	__acquires(&iscsi_wr_lock)
+	__releases(&iscsi_wr_lock)
+{
+	TRACE_ENTRY();
+
+	/*
+	 * We delete/add to tail connections to maintain fairness between them.
+	 */
+
+	while (!list_empty(&iscsi_wr_list)) {
+		int rc;
+		struct iscsi_conn *conn = list_entry(iscsi_wr_list.next,
+			typeof(*conn), wr_list_entry);
+
+		TRACE_DBG("conn %p, wr_state %x, wr_space_ready %d, "
+			"write ready %d", conn, conn->wr_state,
+			conn->wr_space_ready, test_write_ready(conn));
+
+		//从链表中取出
+		list_del(&conn->wr_list_entry);
+
+		sBUG_ON(conn->wr_state == ISCSI_CONN_WR_STATE_PROCESSING);
+
+		conn->wr_state = ISCSI_CONN_WR_STATE_PROCESSING;
+		conn->wr_space_ready = 0;
+#ifdef CONFIG_SCST_EXTRACHECKS
+		conn->wr_task = current;
+#endif
+		spin_unlock_bh(&iscsi_wr_lock);
+
+		conn_get(conn);
+
+		rc = process_write_queue(conn);
+
+		spin_lock_bh(&iscsi_wr_lock);
+#ifdef CONFIG_SCST_EXTRACHECKS
+		conn->wr_task = NULL;
+#endif
+		//此处为原版SCST中的BUG,
+		//rc值不会等于-EAGAIN（详见下面“iscsi_send()函数的返回值”一节中的相关内容）
+		if ((rc == -EAGAIN) && !conn->wr_space_ready) {
+			//处理返回-EAGAIN，并且写缓存满就等待 iscsi_write_space_ready
+			conn->wr_state = ISCSI_CONN_WR_STATE_SPACE_WAIT;
+			goto cont;
+		}
+
+		if (test_write_ready(conn)) {
+			//还有数据要写就继续加入链表
+			//是否写缓存满？
+			//rc值？
+			//是否需要关闭conn?
+			list_add_tail(&conn->wr_list_entry, &iscsi_wr_list);
+			conn->wr_state = ISCSI_CONN_WR_STATE_IN_LIST;
+		} else
+			conn->wr_state = ISCSI_CONN_WR_STATE_IDLE;
+
+cont:
+		conn_put(conn);
+	}
+
+	TRACE_EXIT();
+	return;
+}
+}}}
+----
+== iscsi_send()函数的返回值 ==
+iscsi_do_send()函数:
+{{{#!cplusplus
+static int iscsi_do_send(struct iscsi_conn *conn, int state)
+{
+	int res;
+
+	iscsi_extracheck_is_wr_thread(conn);
+
+	res = write_data(conn);
+	if (res > 0) {
+		//res > 0时返回值也 > 0
+		if (!conn->write_size)
+			conn->write_state = state;
+	} else //res < 0时(write_data的返回值不会为0)，发送出错，调用exit_tx()
+		res = exit_tx(conn, res);
+
+	return res;
+}
+}}}
+
+exit_tx()函数：
+{{{#!cplusplus
+static int exit_tx(struct iscsi_conn *conn, int res)
+{
+	iscsi_extracheck_is_wr_thread(conn);
+
+	switch (res) {
+	//res 为 -EAGAIN 或 -ERESTARTSYS 时返回值为0
+	case -EAGAIN:
+	case -ERESTARTSYS:
+		res = 0;
+		break;
+	default:
+#ifndef CONFIG_SCST_DEBUG
+		if (!conn->closing)
+#endif
+		{
+			PRINT_ERROR("Sending data failed: initiator %s, "
+				"write_size %d, write_state %d, res %d",
+				conn->session->initiator_name,
+				conn->write_size,
+				conn->write_state, res);
+		}
+		//res 为其他值时 mark_conn_closed()
+		conn->write_state = TX_END;
+		conn->write_size = 0;
+		mark_conn_closed(conn);
+		break;
+	}
+	return res;
+}
+}}}
+
+因此 exit_tx() 的返回值为 0 或 负数，为0时表示应重试，负数表示出错。
+
+iscsi_do_send()的返回值：
+	* 大于0表示正常发送
+	* 0表示应重试
+	* 负数表示出错
+
+iscsi_send()函数:
+{{{#!cplusplus
+	//res == 0表示应重试
+	if (res == 0)
+		goto out;
+
+	//conn->write_state != TX_END表示发送未结束
+	if (conn->write_state != TX_END)
+		goto out;
+
+	//发送已完成，此时有两种情况：1.数据已发送完; 2.发送出错，连接关闭
+	if (unlikely(conn->write_size)) {
+		PRINT_CRIT_ERROR("%d %x %u", res, cmnd_opcode(cmnd),
+			conn->write_size);
+		sBUG();
+	}
+	cmnd_tx_end(cmnd);
+
+	rsp_cmnd_release(cmnd);
+
+	conn->write_cmnd = NULL;
+	conn->write_state = TX_INIT;
+
+out:
+	TRACE_EXIT_RES(res);
+	//返回值的几种情况:
+	//  * 大于0表示正常发送，此时可能已发送完(conn->write_state == TX_END)
+	//  * 0表示应重试
+	//  * 负数表示出错
+	return res;
+}
+
+}}}
+----
+== 连接关闭过程 ==
+process_read_io()中判断conn->closing并调用start_close_conn()
+{{{#!cplusplus
+	if (unlikely(conn->closing)) {
+		start_close_conn(conn);
+		*closed = 1;
+	}
+}}}
+
+start_close_conn()中新起一个线程调用close_conn_thr()
+{{{#!cplusplus
+t = kthread_run(close_conn_thr, conn, "iscsi_conn_cleanup");
+if (IS_ERR(t)) {
+	PRINT_ERROR("kthread_run() failed (%ld), closing conn %p "
+		"directly", PTR_ERR(t), conn);
+	close_conn(conn);
+}
+}}}
+
+close_conn_thr()中调用close_conn()
+{{{#!cplusplus
+#ifdef CONFIG_SCST_EXTRACHECKS
+	/*
+	 * To satisfy iscsi_extracheck_is_rd_thread() in functions called
+	 * on the connection close. It is safe, because at this point conn
+	 * can't be used by any other thread.
+	 */
+	conn->rd_task = current;
+#endif
+	close_conn(conn);
+}}}
+
+close_conn()中会等待 conn->wr_state == ISCSI_CONN_WR_STATE_IDLE 并且 conn_ref_cnt 归零:
+{{{#!cplusplus
+while (1) {
+	bool t;
+
+	spin_lock_bh(&iscsi_wr_lock);
+	t = (conn->wr_state == ISCSI_CONN_WR_STATE_IDLE);
+	spin_unlock_bh(&iscsi_wr_lock);
+
+	if (t && (atomic_read(&conn->conn_ref_cnt) == 0))
+		break;
+
+	TRACE_CONN_CLOSE_DBG("Waiting for wr thread (conn %p), "
+		"wr_state %x", conn, conn->wr_state);
+	msleep(50);
+}
+}}}
+
+----
+[[Category-iSCSI]]

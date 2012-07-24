@@ -1,0 +1,66 @@
+# iSCSI优化迭代过程3 - 预先分配内存方式从网络接收数据写到RAID5
+	* SVN库： http://192.168.100.101/svn/esp/trunk/iscsi/kernel/net_io_page_poll  版本号 131
+	
+	* 本文所述为 net_io_multi 测试程序，非 iSCSI 程序
+	
+	* 初始化pg_pool
+		* 预分配总占用空间不大于1G的pg_array保存到pg_pool中
+			* 总共的pg_array数是 n_pg_array = 1024*1024/(pg_nbr*4)，那么
+			{{{#!cplusplus
+pg_pool = kmalloc( n_pg_array * sizeof(struct pg_array*), GFP_KERNEL);
+			}}}
+			
+		* 读索引 read_idx 和写索引 write_idx 都置0
+			* uint64_t read_idx; //当前要用于接收网络数据的pg_pool索引
+			* uint64_t write_idx; //当前要用于写块设备的pg_pool索引
+			* read_idx和write_idx是64位整数，一直往上加，使用
+				* (uint32_t)read_idx%n_pg_array
+				* (uint32_t)write_idx%n_pg_array
+			得到实际的pg_pool中的索引
+		
+		* blockio_test_end() 函数中不再释放pg_array，在模块卸载时才释放
+	
+	* 接收网络数据的线程
+		* while (!exit_flag) {
+			* 从 pg_pool[read_idx] 取出 pg_array 指针
+				* 如果 pg_array的ref_cnt > 0就等待一段时间
+				{{{#!cplusplus
+while(!exit_flag && atomic_read(&pg_array->ref_cnt) > 0) {
+	msleep(1);
+}
+//ref_cnt加1，防止接收数据太快时使用还未来得及写的pg_array
+//blockio_rw_test()函数中不再清ref_cnt，并在提交bio后把ref_cnt减1
+atomic_inc(&pg_array->ref_cnt);
+				}}}
+				* 转换为buffer并接收数据
+				
+			* 接收数据完毕后
+				* read_idx++
+		* }//循环
+	
+	* 写块设备的线程
+		* while (!exit_flag) {
+			* 等待网络接收线程完成当前的接收数据操作
+			{{{#!cplusplus
+while(!exit_flag && write_idx == read_idx) {
+	msleep(1);
+}
+			}}}
+			
+			* 从 pg_pool[write_idx] 取出 pg_array 指针，并构造bio写块设备
+			
+			* write_idx++
+		* } //循环
+	
+	* 测试结果:
+	{{{
+$./tcp_send_client 192.168.103.190 60001 0 100000 60000
+speed: 81.321693 MB/s
+	}}}
+	
+	{{{
+net_io: write 5859328 KBytes, time 70416 mesc, speed: 83.21 MByte
+net_io: net_io_server cpu: 81.11%, net_io_write cpu: 0.05%, raid5 cpu: 18.39%, all net_io cpu: 99.55%, system total cpu: 99.91%
+	}}}
+----
+[[Category-WisESP]]

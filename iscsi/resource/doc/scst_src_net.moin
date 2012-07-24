@@ -1,0 +1,476 @@
+# SCST源码阅读1：网络相关部分源码解析
+<<TableOfContents>>
+
+本文scst的代码来源于 https://scst.svn.sourceforge.net/svnroot/scst/trunk  r1685
+----
+=== 从网络接收数据的叶子函数sock_recvmsg()被调用的路径 ===
+	* sock_recvmsg()
+		* do_recv()
+			* iscsi_rx_check_ddigest()
+				* process_read_io()
+			* process_read_io()
+	
+所有调用到sock_recvmsg()的分支都有 process_read_io()，因此只需要找 process_read_io() 被调用的路径。
+
+	* process_read_io()
+		* scst_do_job_rd()
+			* istrd()
+
+istrd是读线程入口函数，因此已找到调用sock_recvmsg()的源头。
+
+=== 从网络接收数据的函数do_recv() ===
+{{{#!cplusplus
+///nthread.c
+
+/* Returns number of bytes left to receive or <0 for error */
+static int do_recv(struct iscsi_conn *conn)
+{
+	int res;
+	mm_segment_t oldfs;
+	struct msghdr msg;
+	int first_len;
+
+	EXTRACHECKS_BUG_ON(conn->read_cmnd == NULL);
+
+	if (unlikely(conn->closing)) {
+		res = -EIO;
+		goto out;
+	}
+
+	/*
+	 * We suppose that if sock_recvmsg() returned less data than requested,
+	 * then next time it will return -EAGAIN, so there's no point to call
+	 * it again.
+	 */
+
+restart:
+	memset(&msg, 0, sizeof(msg));
+	msg.msg_iov = conn->read_msg.msg_iov;
+	msg.msg_iovlen = conn->read_msg.msg_iovlen;
+	first_len = msg.msg_iov->iov_len;
+
+	oldfs = get_fs();
+	set_fs(get_ds());
+	///调用sock_recvmsg接收数据
+	res = sock_recvmsg(conn->sock, &msg, conn->read_size,
+			   MSG_DONTWAIT | MSG_NOSIGNAL);
+	set_fs(oldfs);
+
+	if (res > 0) {
+		/*
+		 * To save some considerable effort and CPU power we
+		 * suppose that TCP functions adjust
+		 * conn->read_msg.msg_iov and conn->read_msg.msg_iovlen
+		 * on amount of copied data. This BUG_ON is intended
+		 * to catch if it is changed in the future.
+		 */
+		sBUG_ON((res >= first_len) &&
+			(conn->read_msg.msg_iov->iov_len != 0));
+		conn->read_size -= res;
+		if (conn->read_size != 0) {
+			if (res >= first_len) {
+				int done = 1 + ((res - first_len) >> PAGE_SHIFT);
+				conn->read_msg.msg_iov += done;
+				conn->read_msg.msg_iovlen -= done;
+			}
+		}
+		res = conn->read_size;
+	} else {
+		switch (res) {
+		case -EAGAIN:
+			TRACE_DBG("EAGAIN received for conn %p", conn);
+			res = conn->read_size;
+			break;
+		case -ERESTARTSYS:
+			TRACE_DBG("ERESTARTSYS received for conn %p", conn);
+			goto restart;
+		default:
+			if (!conn->closing) {
+				PRINT_ERROR("sock_recvmsg() failed: %d", res);
+				mark_conn_closed(conn);
+			}
+			if (res == 0)
+				res = -EIO;
+			break;
+		}
+	}
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+}}}
+
+=== 调用了do_recv()的函数 ===
+==== process_read_io() ====
+从网络接收数据的主要函数，包含5个do_recv()调用。
+{{{#!cplusplus
+///nthread.c
+
+/* No locks, conn is rd processing */
+static int process_read_io(struct iscsi_conn *conn, int *closed)
+{
+	struct iscsi_cmnd *cmnd = conn->read_cmnd;
+	int res;
+
+	TRACE_ENTRY();
+
+	/* In case of error cmnd will be freed in close_conn() */
+
+	do {
+		switch (conn->read_state) {
+		case RX_INIT_BHS:
+			EXTRACHECKS_BUG_ON(conn->read_cmnd != NULL);
+			cmnd = cmnd_alloc(conn, NULL);
+			conn->read_cmnd = cmnd;
+			iscsi_conn_init_read(cmnd->conn,
+				(void __force __user *)&cmnd->pdu.bhs,
+				sizeof(cmnd->pdu.bhs));
+			conn->read_state = RX_BHS;
+			/* go through */
+
+		case RX_BHS:
+			///接收BHS（Basic Header Segment）
+			res = do_recv(conn);
+			if (res == 0) {
+				iscsi_cmnd_get_length(&cmnd->pdu);
+				if (cmnd->pdu.ahssize == 0) {
+					if ((conn->hdigest_type & DIGEST_NONE) == 0)
+						conn->read_state = RX_INIT_HDIGEST;
+					else
+						conn->read_state = RX_CMD_START;
+				} else {
+					iscsi_conn_prepare_read_ahs(conn, cmnd);
+					conn->read_state = RX_AHS;
+				}
+			}
+			break;
+
+		case RX_CMD_START:
+			res = cmnd_rx_start(cmnd);
+			if (res == 0) {
+				if (cmnd->pdu.datasize == 0)
+					conn->read_state = RX_END;
+				else
+					conn->read_state = RX_DATA;
+			} else if (res > 0)
+				conn->read_state = RX_CMD_CONTINUE;
+			else
+				sBUG_ON(!conn->closing);
+			break;
+
+		case RX_CMD_CONTINUE:
+			if (cmnd->scst_state == ISCSI_CMD_STATE_RX_CMD) {
+				TRACE_DBG("cmnd %p is still in RX_CMD state",
+					cmnd);
+				res = 1;
+				break;
+			}
+			res = cmnd_rx_continue(cmnd);
+			if (unlikely(res != 0))
+				sBUG_ON(!conn->closing);
+			else {
+				if (cmnd->pdu.datasize == 0)
+					conn->read_state = RX_END;
+				else
+					conn->read_state = RX_DATA;
+			}
+			break;
+
+		case RX_DATA:
+			///接收数据（Data Segment）
+			res = do_recv(conn);
+			if (res == 0) {
+				int psz = ((cmnd->pdu.datasize + 3) & -4) - cmnd->pdu.datasize;
+				if (psz != 0) {
+					TRACE_DBG("padding %d bytes", psz);
+					iscsi_conn_init_read(conn,
+						(void __force __user *)&conn->rpadding, psz);
+					conn->read_state = RX_PADDING;
+				} else if ((conn->ddigest_type & DIGEST_NONE) != 0)
+					conn->read_state = RX_END;
+				else
+					conn->read_state = RX_INIT_DDIGEST;
+			}
+			break;
+
+		case RX_END:
+			if (unlikely(conn->read_size != 0)) {
+				PRINT_CRIT_ERROR("conn read_size !=0 on RX_END "
+					"(conn %p, op %x, read_size %d)", conn,
+					cmnd_opcode(cmnd), conn->read_size);
+				sBUG();
+			}
+			conn->read_cmnd = NULL;
+			conn->read_state = RX_INIT_BHS;
+
+			///读到一个完整命令，开始处理
+			cmnd_rx_end(cmnd);
+
+			EXTRACHECKS_BUG_ON(conn->read_size != 0);
+
+			/*
+			 * To maintain fairness. Res must be 0 here anyway, the
+			 * assignment is only to remove compiler warning about
+			 * uninitialized variable.
+			 */
+			res = 0;
+			goto out;
+
+		case RX_INIT_HDIGEST:
+			iscsi_conn_init_read(conn,
+				(void __force __user *)&cmnd->hdigest, sizeof(u32));
+			conn->read_state = RX_CHECK_HDIGEST;
+			/* go through */
+
+		case RX_CHECK_HDIGEST:
+			///接收header digest
+			res = do_recv(conn);
+			if (res == 0) {
+				res = digest_rx_header(cmnd);
+				if (unlikely(res != 0)) {
+					PRINT_ERROR("rx header digest for "
+						"initiator %s failed (%d)",
+						conn->session->initiator_name,
+						res);
+					mark_conn_closed(conn);
+				} else
+					conn->read_state = RX_CMD_START;
+			}
+			break;
+
+		case RX_INIT_DDIGEST:
+			iscsi_conn_init_read(conn,
+				(void __force __user *)&cmnd->ddigest,
+				sizeof(u32));
+			conn->read_state = RX_CHECK_DDIGEST;
+			/* go through */
+
+		case RX_CHECK_DDIGEST:
+			res = iscsi_rx_check_ddigest(conn);
+			break;
+
+		case RX_AHS:
+			///接收AHS（Additional Header Segment）
+			res = do_recv(conn);
+			if (res == 0) {
+				if ((conn->hdigest_type & DIGEST_NONE) == 0)
+					conn->read_state = RX_INIT_HDIGEST;
+				else
+					conn->read_state = RX_CMD_START;
+			}
+			break;
+
+		case RX_PADDING:
+			///接收padding
+			res = do_recv(conn);
+			if (res == 0) {
+				if ((conn->ddigest_type & DIGEST_NONE) == 0)
+					conn->read_state = RX_INIT_DDIGEST;
+				else
+					conn->read_state = RX_END;
+			}
+			break;
+
+		default:
+			PRINT_CRIT_ERROR("%d %x", conn->read_state, cmnd_opcode(cmnd));
+			res = -1; /* to keep compiler happy */
+			sBUG();
+		}
+	} while (res == 0);
+
+	if (unlikely(conn->closing)) {
+		start_close_conn(conn);
+		*closed = 1;
+	}
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+}}}
+
+==== iscsi_rx_check_ddigest() ====
+位于nthread.c，接收data digest并校验的函数，被process_read_io()调用。
+
+=== 调用到process_read_io()的路径 ===
+位于nthread.c。
+{{{#!cplusplus
+int istrd(void *arg) => scst_do_job_rd() => process_read_io()
+}}}
+
+istrd是读线程入口函数:
+{{{#!cplusplus
+int istrd(void *arg)
+{
+	TRACE_ENTRY();
+
+	PRINT_INFO("Read thread started, PID %d", current->pid);
+
+	current->flags |= PF_NOFREEZE;
+
+	spin_lock_bh(&iscsi_rd_lock);
+	while (!kthread_should_stop()) {
+		wait_queue_t wait;
+		init_waitqueue_entry(&wait, current);
+
+		if (!test_rd_list()) {
+			add_wait_queue_exclusive_head(&iscsi_rd_waitQ, &wait);
+			for (;;) {
+				set_current_state(TASK_INTERRUPTIBLE);
+				if (test_rd_list())
+					break;
+				spin_unlock_bh(&iscsi_rd_lock);
+				schedule();
+				spin_lock_bh(&iscsi_rd_lock);
+			}
+			set_current_state(TASK_RUNNING);
+			remove_wait_queue(&iscsi_rd_waitQ, &wait);
+		}
+		scst_do_job_rd();
+	}
+	spin_unlock_bh(&iscsi_rd_lock);
+
+	/*
+	 * If kthread_should_stop() is true, we are guaranteed to be
+	 * on the module unload, so iscsi_rd_list must be empty.
+	 */
+	sBUG_ON(!list_empty(&iscsi_rd_list));
+
+	PRINT_INFO("Read thread PID %d finished", current->pid);
+
+	TRACE_EXIT();
+	return 0;
+}
+}}}
+
+scst_do_job_rd从链表iscsi_rd_list中取出连接conn，并接收数据：
+{{{#!cplusplus
+static void scst_do_job_rd(void)
+	__acquires(&iscsi_rd_lock)
+	__releases(&iscsi_rd_lock)
+{
+	TRACE_ENTRY();
+
+	/*
+	 * We delete/add to tail connections to maintain fairness between them.
+	 */
+
+	while (!list_empty(&iscsi_rd_list)) {
+		int closed = 0, rc;
+		struct iscsi_conn *conn = list_entry(iscsi_rd_list.next,
+			typeof(*conn), rd_list_entry);
+
+		list_del(&conn->rd_list_entry);
+
+		sBUG_ON(conn->rd_state == ISCSI_CONN_RD_STATE_PROCESSING);
+		conn->rd_data_ready = 0;
+		conn->rd_state = ISCSI_CONN_RD_STATE_PROCESSING;
+#ifdef CONFIG_SCST_EXTRACHECKS
+		conn->rd_task = current;
+#endif
+		spin_unlock_bh(&iscsi_rd_lock);
+
+		rc = process_read_io(conn, &closed);
+
+		spin_lock_bh(&iscsi_rd_lock);
+
+		if (unlikely(closed))
+			continue;
+
+		if (unlikely(conn->conn_tm_active)) {
+			spin_unlock_bh(&iscsi_rd_lock);
+			iscsi_check_tm_data_wait_timeouts(conn, false);
+			spin_lock_bh(&iscsi_rd_lock);
+		}
+
+#ifdef CONFIG_SCST_EXTRACHECKS
+		conn->rd_task = NULL;
+#endif
+		if ((rc == 0) || conn->rd_data_ready) {
+			///已读完一个包或sock有数据就继续放入读链表中
+			list_add_tail(&conn->rd_list_entry, &iscsi_rd_list);
+			conn->rd_state = ISCSI_CONN_RD_STATE_IN_LIST;
+		} else ///未读完一个完整包，置状态为idle，等待sock有数据时调用回调函数iscsi_data_ready再加入读链表
+			conn->rd_state = ISCSI_CONN_RD_STATE_IDLE;
+	}
+
+	TRACE_EXIT();
+	return;
+}
+
+}}}
+
+=== 一个conn从网络读的流程 ===
+	* '''设置sk_data_ready回调函数为iscsi_data_ready（在sock有数据时调用）'''
+	{{{#!cplusplus
+///conn.c
+
+static void conn_activate(struct iscsi_conn *conn)
+{
+	TRACE_MGMT_DBG("Enabling conn %p", conn);
+
+	/* Catch double bind */
+	sBUG_ON(conn->sock->sk->sk_state_change == iscsi_state_change);
+
+	write_lock_bh(&conn->sock->sk->sk_callback_lock);
+
+	conn->old_state_change = conn->sock->sk->sk_state_change;
+	conn->sock->sk->sk_state_change = iscsi_state_change;
+
+	conn->old_data_ready = conn->sock->sk->sk_data_ready;
+	///设置sk_data_ready回调函数（在sock有数据时调用）
+	conn->sock->sk->sk_data_ready = iscsi_data_ready;
+
+	conn->old_write_space = conn->sock->sk->sk_write_space;
+	conn->sock->sk->sk_write_space = iscsi_write_space_ready;
+
+	write_unlock_bh(&conn->sock->sk->sk_callback_lock);
+
+	/*
+	 * Check, if conn was closed while we were initializing it.
+	 * This function will make conn rd_active, if necessary.
+	 */
+	__iscsi_state_change(conn->sock->sk);
+
+	return;
+}
+	}}}
+	
+	* '''iscsi_data_ready() => iscsi_make_conn_rd_active()'''
+	{{{#!cplusplus
+void iscsi_make_conn_rd_active(struct iscsi_conn *conn)
+{
+	TRACE_ENTRY();
+
+	spin_lock_bh(&iscsi_rd_lock);
+
+	TRACE_DBG("conn %p, rd_state %x, rd_data_ready %d", conn,
+		conn->rd_state, conn->rd_data_ready);
+
+	///置conn->rd_data_ready为1
+	conn->rd_data_ready = 1;
+
+	if (conn->rd_state == ISCSI_CONN_RD_STATE_IDLE) {
+		///把idle的conn加入iscsi_rd_list
+		list_add_tail(&conn->rd_list_entry, &iscsi_rd_list);
+		conn->rd_state = ISCSI_CONN_RD_STATE_IN_LIST;
+		wake_up(&iscsi_rd_waitQ);
+	}
+
+	spin_unlock_bh(&iscsi_rd_lock);
+
+	TRACE_EXIT();
+	return;
+}
+	}}}
+	
+	* '''istrd() => scst_do_job_rd() => process_read_io() => do_recv()'''
+		* scst_do_job_rd()中未读到一个完整的包就先不读（不放入iscsi_rd_list），在sock有数据回调iscsi_data_ready()时再加入iscsi_rd_list，读取剩余的数据
+
+=== 读到一个完整命令，开始处理的入口 ===
+
+在process_read_io()函数中，读到一个完整命令后调用了 cmnd_rx_end(cmnd)，此即是开始处理一个完整命令的开始。
+
+----
+[[Category-iSCSI]]
