@@ -1,0 +1,57 @@
+* fs/open.c
+	SYSCALL_DEFINE3(open, const char __user *, filename, int, flags,
+			umode_t, mode);
+	--> do_sys_open
+		--> build_open_flags (fill struct open_flags)
+		--> getname (copy pathname from userspace to kernel)
+		--> get_unused_fd_flags (get integer descriptor)
+		--> do_filp_open (open file now ...)
+		--> fsnotify_open
+		--> fd_install
+		--> putname (free malloced buffer by getname)
+
+	Focus on do_filp_open:
+	--> do_filp_open
+		--> path_openat
+			--> get_empty_filp
+			--> path_init
+			--> link_path_walk
+			--> do_last (parse last part of pathname)
+
+* fs read_write.c
+	SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf,
+			size_t, count);
+	--> fget_light
+	--> file_pos_read
+	--> vfs_read
+		--> access_ok
+		--> rw_verify_area
+		--> file->f_op->read or do_sync_read
+		--> fsnotify_access
+	--> file_pos_write
+	--> fput_light
+
+	Focus on do_sync_read
+	--> do_sync_read
+		--> init_sync_kiocb
+		--> filp->f_op->aio_read (ext3: generic_file_aio_read)
+			--> generic_segment_checks
+			--> O_DIRECT: i_size_read
+				--> filemap_write_and_wait_range
+				--> blk_start_plug
+				--> blk_finish_plug
+				--> file_accessed
+			--> !O_DIRECT: do_generic_file_read
+				--> do_generic_file_read
+				--> page_cache_sync_readahead
+				--> find_get_page
+				--> page_cache_async_readahead
+				--> PageUptodate
+				--> mapping_writably_mapped
+				--> page_cache_release
+				--> mapping->a_ops->readpage
+				--> page_cache_alloc_cold
+				--> add_to_page_cache_lru
+
+
+
