@@ -1,0 +1,6 @@
+* Sections
+	* get source and compile
+	* image format
+	* boot progress
+	* drivers
+	* fs

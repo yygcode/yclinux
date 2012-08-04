@@ -1,0 +1,31 @@
+* Start
+
+
+* asm-generic/vmlinux.lds.h
+	#define INIT_CALLS_LEVEL(level)				\
+		VMLINUX_SYMBOL(__initcall##level##_start) = .;	\
+		*(.initcall##level##.init)			\
+		*(.initcall##level##s.init)
+	#define INIT_CALLS					\
+		VMLINUX_SYMBOL(__initcall_start) = .;		\
+		*(.initcallearly.init)				\
+		INIT_CALLS_LEVEL(0)				\
+		INIT_CALLS_LEVEL(1)				\
+		INIT_CALLS_LEVEL(2)				\
+		INIT_CALLS_LEVEL(3)				\
+		INIT_CALLS_LEVEL(4)				\
+		INIT_CALLS_LEVEL(5)				\
+		INIT_CALLS_LEVEL(rootfs)			\
+		INIT_CALLS_LEVEL(6)				\
+		INIT_CALLS_LEVEL(7)				\
+		VMLINUX_SYMBOL(__initcall_end) = .;		\
+
+	#define INIT_DATA_SECTION(initsetup_align)		\
+		.init.data: AT(ADDR(.init.data) - LOAD_OFFSET) {\
+			INIT_DATA				\
+			INIT_SETUP(initsetup_align)		\
+			INIT_CALLS				\
+			CON_INITCALL				\
+			SECURITY_INITCALL			\
+			INIT_RAM_FS				\
+		}

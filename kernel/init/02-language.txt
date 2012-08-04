@@ -1,0 +1,276 @@
+* Linker scripts
+	The linker combines input files into a single output file. The output
+	file and each input file are in a special data format known as object
+	file format. Each file is called an object file. The output file is
+	often called an executable, but for our purposes we will also call it
+	an object file. Each object file has, among other things, a list of
+	sections. We sometimes refer to a section in an input file as an input
+	section; similarly, a section in the output file is an output section.
+
+	Each section in an object file has name and size. Most sections also
+	have an associated block of data, known as the section contents. A
+	section may be marked as loadable, which mean that the contents should
+	be loaded into memory when the output file is run. A section with no
+	contents may be allocatable, which means that that an area in memory
+	should be set aside, but nothing in particular should be loaded there (
+	in some cases this memory must be zeroed out). A section which is
+	neither loadable nor allocatable typically contains some sort of
+	debugging information.
+
+	Every loadable or allocatable output section has two addresses. The
+	first is the VMA, or virtual memory address. This is the address the
+	section will have when the output file is run. The second is the LMA,
+	or load memotry address. This is the address at which the section will
+	be loaded. In most cases the two addresses will be the same. An example
+	of when they might be different is when a data section is loaded into
+	ROM, and then copied into RAM when the program starts up (this
+	technique is often used to initialize global variables in a ROM based
+	system). In this case the ROM address whould be the LMA, and the RAM
+	address would be the VMA.
+
+	You can see the sections in an object file by using the objdump program
+	with the '-h' option. Every object file also has a list of symbols,
+	known as the symbol table. A symbol may be defined or undefined. Each
+	symbol has a name, and each defined symbol has an address, among other
+	information.
+
+	You can see the symbols in an object file by using the nm program, or
+	by using the objdump program with the '-t' option. But for stripped
+	object files, there is no symbol information.
+
+* Linker Script format
+	Linker scripts are text files.
+	You write a linker script as a series of commands. Each command is
+	either a keyword, possibly followed by arguments, or an assignments to
+	a symbol. You may separate commands using semicolons. Whitespace is
+	generally ignored.
+
+	Strings such as file or format names can normally be entered directly.
+	If the file name contains a character such as a comma which would
+	otherwise serve to separate file names, you may put the file name in
+	double quotes. There is no way to use a double quote character in a
+	file name.
+
+	You may include comments in linker scipts juat as in C or C++,
+	delimited by '/*' and '*/'. As in C, comments are syntactically
+	equivalent to whitespace.
+
+* Simple Linker Script Example
+	The simplest possible linker script has just one command: 'SECTIONS'.
+	You use the 'SECTIONS' command to describe the memory layout of the
+	output file.
+
+	SECTIONS {
+		. = 0x10000;
+		.text : { *(.text) }
+		.data : { *(.data) }
+		.bss  : { *(.bss) }
+	}
+
+* Simple Linker Script Commands
+	ENTRY(symbol)
+		Setting the entry point.
+		There are several ways to set the entry point:
+			* '-e' command-line option
+			* ENTRY(symbol) command in a linker script
+			* value of the symbol start/_start if defined
+			* address of the first byte of the '.text' section
+			* address 0
+	INCLUDE filename
+		Include the linker script @filename at this point.
+		The file will be searched for in the currect directory and in
+		any directory specified with the '-L' option.
+		Nesting can up to 10 levels deep.
+
+	INPUT(file, file, ...)
+	INPUT(file file ...)
+		Directs the linker to include the named files in the link, as
+		though there were named on the command line.
+		If you use INPUT(-lfile), ld will transform the name to
+		libfile.a, as with the command line argument '-l'.
+
+	GROUP(file, file, ...)
+	GROUP(file file ...)
+		Like as the command INPUT, except that the named files should
+		all be archives, and they are searched repeatedly until no new
+		undefined references are created.
+
+	OUTPUT(file)
+		output file name. The command is exactly like using command
+		line option '-o filename'. If both are used, the command line
+		option take precedence.
+		You can use the command to define a default name for the output
+		file other than the usual default of 'a.out'
+
+	SEARCH_DIR(path)
+		The SEARCH_DIR command adds path to the list of paths where ld
+		looks for archive libraries. The command is exactly like using
+		'-L path' on the command line. If both are are used, then the
+		linker will search both paths. Paths specified using the
+		command line option are searched first.
+
+	STARTUP(filename)
+		Like as the INPUT command, except that @filename will become
+		the first input file to be linked, as though it were specified
+		first on the command line. This may be useful when using a
+		system in which file the entry point is always the start of the
+		first file.
+
+	OUTPUT_FORMAT(bfdname)
+	OUTPUT_FORMAT(default, big, little)
+		The commands names the BFD format to use for the output file.
+		Using OUTPUT_FORMAT(bfdname) is exactly like using the command
+		line option '-oformat bfdname'. If both are used, the command
+		line option takes precedence.
+		You can use OUTPUT_FORMAT with three arguments to use different
+		format based on the '-EB' and '-EL' command line options.
+		If neither '-EB' nor '-EL' are used, then the output format
+		will be the first argument, @default. e.g.:
+		OUTPUT_FORMAT(elf32-bigmips, elf32-bigmips, elf32-littlemips)
+
+	TARGET(bfdname)
+		The commands names the BFD format to use when reading input
+		files. It affects subsequent INPUT and GROUP commands. This
+		command is like using '-b bfdname' on the command line.
+		If the TARGET command is used but OUTPUT_FORMAT is not, then
+		the last TARGET command is also used to set the format for the
+		output file.
+
+	ASSERT(expr, message)
+		Ensure the expr is non-zero. Otherwise, the linker would exit
+		with an error code, and print error message @message.
+
+	EXTERN(symbol symbol ...)
+		Force symbol to be entered in the output file as an undefined
+		symbol. EXTERN can use multiple times.
+
+	FORCE_COMMON_ALLOCATION
+		The command has the same effect as the '-d' option. To make ld
+		assign space to common symbols even if a relocatable output
+		file is specified('-r').
+
+	NOCROSSREFS(section section ...)
+		The command tell ld to issue an error about any references
+		among certain output sections.
+		If ld detects any cross references between the sections, it
+		reports an error and returns a non-zero exit status.
+		Note that the command uses output section names, not input
+		section names.
+
+	OUTPUT_ARCH(bfdarch)
+		Specify a particular machine architecture. The argument is one
+		of the names used by the BFD library. You can see the
+		architecture of an object file by using the objdump program
+		with the '-f' option.
+
+* Assigning Values to Symbols
+	symbol += expression;
+	symbol -= expression;
+	symbol /= expression;
+	symbol *= expression;
+	symbol <<= expression;
+	symbol >>= expression;
+	symbol &= expression;
+	symbol |= expression;
+	e.g.:
+	floating_point = 0;
+	SECTIONS {
+		e.g.:
+		floating_point = 0;
+		SECTIONS {
+			.text : {
+				*(.text)
+				_etext = .;
+			}
+			_bdata = (. + 3) & ~3;
+			.data : { *(.data) }
+		}
+	}
+
+* PROVIDE
+	The PROVIDE keyword may be used to define a symbol, such as 'etext',
+	only if it is referenced but not defined. The symtax is
+		PROVIDE(symbol = expression)
+	SECTIONS {
+		.text : {
+			*(.text)
+			_etext = .;
+			PROVIDE(etext = .);
+		}
+	}
+
+* SECTIONS
+	The SECTIONS command tells the linker how to map input sections into
+	output sections, and how to place the output sections in memory.
+	The format of the SECTIONS command is:
+	SECTIONS {
+		sections-command
+		sections-command
+		...
+	}
+	Each sections-command may of be one of the following:
+		* an ENTRY command
+		* a symbol assignment
+		* an output section description
+		* an overlay description.
+
+	** Output section description:
+		section [address] [(type)] : [AT(lma)]
+		{
+			output-section-command
+			output-section-command
+			...
+		} [>region] [AT>lma_region] [:phdr :phdr ...] [=fillexp]
+	   Each output-section-command may be one of the following:
+		* a symbol assignment
+		* an input section description
+		* data values to include directly
+		* a special output section keyword.
+	** Output section name
+	   The name of the output section is @section. @section must meet the
+	   constraints of your output format. e.g., for a.out, the name must
+	   be one of the names supported by the format (.text, .data, etc.).
+
+	** Output section address
+	   The address is an expression for the VMA of the output section. If
+	   you do not provide address, the linker will set it based on region
+	   if present, or otherwise based on the current value of the location
+	   counter.
+	   If you provide address, the address of the output section will be
+	   set to precisely that.
+	   e.g.: .text . : { *(.text) }
+	         .text   : { *(.text) }
+		 .text ALIGN(0x10) : { *(.text) }
+	** Input section description
+	  (*(EXCLUDE_FILE (*crtend.o *otherfile.o) .ctors))
+	  *(.text .rdata)
+	  *(.text) *(.rdata)
+	  data.o(.data)
+	  data.o
+	** Wildcard
+	   * ? [chars] '\'
+	** Example
+		SECTIONS {
+			.text : { *(.text) }
+			.DATA : { [A-Z]*(.data) }
+			.data : { *(.data) }
+			.bss  : { *(.bss) }
+		}
+
+		SECTIONS {
+			outputa 0x10000 : {
+				all.o
+				foo.o (.input1)
+			}
+			outputb : {
+				foo.o (.input2)
+				foo1.o (.input1)
+			}
+			outputc : {
+				*(.input1)
+				*(.input2)
+			}
+		}
+	** Output section keywords
+	   CREATE_OBJECT_SYMBOLS
+	   CONSTRUCTORS
