@@ -32,7 +32,6 @@ lfs-59-texinfo.sh
 lfs-60-udev.sh
 lfs-61-vim.sh
 lfs-62-stripping.sh
-lfs-63-cleanup.sh
 "
 
 dir=$(dirname $0)

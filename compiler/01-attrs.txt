@@ -1,0 +1,54 @@
+* constructor/destructor
+  constructor(priority)/destructor(priority)
+
+  The constructor attribute causes the function to be called automatically
+  before execution enters main(). Similarly, the destructor attribute causes
+  the function to be called automatically after main() has completed or exit
+  has been called. (But _exit() function would directly terminate process, so
+  the destructor functions would not be called.)
+
+  You may provide an optional integer priority to control the order in which
+  constructor and destructor functions are run. A constructor with a smaller
+  priority number runs before a constructor with a larger priority number. the
+  opposite relationship holds for destructors. (The priority [0,100] are
+  reserved for compiler internals.)
+
+* deprecated/deprecated(msg)
+  The attribute results in a warning if the function is used anywhere in the
+  source file.
+
+* format (archetype, string-index, first-to-check)
+  The attribute specifies that a function takes printf, scanf, strftime, or
+  strfmon style arguments which should be type-checked against a format string.
+
+* format_arg(string-indxe)
+
+* noinline
+  Prevents a function from being considered for inlining.
+
+* nonnull(arg-indx, ...)
+
+* noreturn
+
+* pure
+  used to elimination loop call.
+
+* hot/cold
+
+* regparm(number)
+
+* returns_twice
+
+* section(section-name)
+
+* unused
+  The function may be unused, so gcc will not produce a warning for
+  the function.
+
+* used
+
+* warn_unused_result
+
+* weak
+
+* weakref
